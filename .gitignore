@@ -15,7 +15,7 @@ agent/sessions/
 agent/pi-crash.log
 agent/mcp-metadata-cache.json
 agent/plannotator-review-status.json
-.rpiv/workflows/runs/
+.rpiv/
 
 # Dependencies / generated package installs
 agent/npm/node_modules/
