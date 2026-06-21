@@ -1,0 +1,19 @@
+{
+  "quietStartup": true,
+  "collapseChangelog": true,
+  "enableInstallTelemetry": false,
+  "lastChangelogVersion": "0.79.6",
+  "autocompleteMaxVisible": 15,
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.5",
+  "packages": [
+    {
+      "source": "/Users/lino/.config/nono/packages/always-further/pi"
+    },
+    "npm:@plannotator/pi-extension",
+    "npm:@tavily/pi-extension"
+  ],
+  "defaultThinkingLevel": "medium",
+  "hideThinkingBlock": false,
+  "theme": "zedokai-pi"
+}

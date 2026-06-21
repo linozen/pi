@@ -1,0 +1,14 @@
+{
+  "name": "local-mcp-adapter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local MCP adapter extension for Pi",
+  "type": "module",
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  }
+}

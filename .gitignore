@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# Secrets and auth material
+agent/auth.json
+agent/tavily.env
+agent/mcp-oauth.json
+agent/**/*.env
+.env*
+*.pem
+*.key
+
+# Session transcripts and local runtime state
+agent/sessions/
+agent/pi-crash.log
+agent/mcp-metadata-cache.json
+agent/plannotator-review-status.json
+.rpiv/workflows/runs/
+
+# Dependencies / generated package installs
+agent/npm/node_modules/
+agent/extensions/**/node_modules/
+
+# Local dependency/source snapshots
+agent/vendor/plannotator-snapshot/repo/
+agent/vendor/plannotator-snapshot/*.tgz
+
+# Local caches
+.cache/

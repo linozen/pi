@@ -1,0 +1,19 @@
+{
+  "providers": {
+    "azure-iptas-chat": {
+      "baseUrl": "https://iptas-coding.services.ai.azure.com/openai/v1",
+      "api": "openai-completions",
+      "apiKey": "$AZURE_IPTAS_KEY",
+      "models": [
+        {
+          "id": "DeepSeek-V4-Flash",
+          "contextWindow": 1000000
+        },
+        {
+          "id": "DeepSeek-V4-Pro",
+          "contextWindow": 1000000
+        }
+      ]
+    }
+  }
+}

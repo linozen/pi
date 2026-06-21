@@ -1,0 +1,10 @@
+{
+  "phases": {
+    "planning": {
+      "statusLabel": "[P] Plan model enabled"
+    },
+    "executing": {
+      "statusLabel": "[P] Plan model executing"
+    }
+  }
+}
