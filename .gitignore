@@ -18,7 +18,7 @@ agent/plannotator-review-status.json
 .rpiv/
 
 # Dependencies / generated package installs
-agent/npm/
+agent/npm/node_modules/
 agent/extensions/**/node_modules/
 
 # Local dependency/source snapshots
