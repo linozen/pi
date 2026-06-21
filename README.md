@@ -1,105 +1,78 @@
 # Local Pi launchers
 
-This setup separates provider credentials by launcher. The default `n-pi` path is the ChatGPT/OpenAI subscription path. The Pi customization is intentionally native and small: local extensions under `~/.pi/agent/extensions/`, prompt templates under `~/.pi/agent/prompts/`, and only the Plannotator package plus the nono package in `settings.json`.
+Curated, reviewable configuration for `~/.pi/agent` and the matching nono launcher workflow.
 
-## Launchers
+## Daily workflow
 
-### `n-pi-openai`
-
-Uses profile `pi-base-local` and starts Pi normally:
+Use the default OpenAI/ChatGPT subscription launcher for normal work:
 
 ```sh
-n-pi-openai
+n-pi
 ```
 
-Credential behavior:
+For non-trivial changes, use Plannotator as the planning gate:
 
+```text
+/plannotator
+```
+
+or the local shortcut/alias surface:
+
+```text
+/plan
+Ctrl+Super+P
+```
+
+For Linear-backed work, use the local command wrapper:
+
+```text
+/linear-pull ENG-123
+```
+
+After implementation, sync the outcome back to Linear:
+
+```text
+/linear-sync ENG-123
+```
+
+For non-Linear work, skip Linear and ask directly for a Plannotator-reviewed plan. The Plannotator tools can always be used to get structured feedback from a human operator.
+
+Plan markdown files created during this loop are temporary repo-local working files. Iterate on them for Plannotator review, then delete them before the final cleanup commit unless a plan is intentionally being preserved. Plannotator keeps review snapshots under `~/.plannotator`.
+
+## Retained components
+
+- `agent/settings.json` — Pi package/model/theme entry point.
+- `agent/models.json` — non-secret Azure/IPTAS model descriptor for the optional Azure launcher.
+- `agent/plannotator.json` — short Plannotator phase labels.
+- `agent/prompts/linear-plannotator.md` — prompt-template fallback for Linear issue planning.
+- `agent/extensions/linear-plannotator.ts` — command surface for `/plan`, `/plannotator`, `/plan-status`, `/linear-pull`, `/linear-sync`, and `Ctrl+Super+P`.
+- `agent/extensions/statusline.ts` — custom one-line footer/statusline and ChatGPT usage command.
+- `agent/extensions/exit-alias.ts` — `/exit` alias.
+- `agent/extensions/local-mcp-adapter/` — local MCP proxy extension.
+- `agent/keybindings.json` — small TUI navigation keybindings.
+- `agent/themes/zedokai-pi.json` — custom theme.
+- `agent/skills/` — local opt-in skills.
+
+Cleanup should keep this command surface intact unless the replacement workflow is explicitly approved.
+
+## Launchers and credentials
+
+The default launcher is `n-pi`, equivalent to `n-pi-openai`:
+
+- Uses nono profile `pi-base-local`.
 - Reads `~/.pi/agent/auth.json` for ChatGPT/OpenAI Codex subscription OAuth.
-- Does not inject provider API-key environment variables.
-- `n-pi` is an alias for this launcher.
+- Does not inject Azure or Mistral API-key variables.
 
-### `n-pi-azure`
+Optional provider launchers remain escape hatches:
 
-Uses profile `pi-azure-local` and injects only the Azure/IPTAS key from 1Password:
+- `n-pi-azure` — profile `pi-azure-local`, injects only `AZURE_IPTAS_KEY`, denies `auth.json`, starts `azure-iptas-chat` / `DeepSeek-V4-Flash`.
+- `n-pi-mistral` — profile `pi-mistral-local`, injects only `MISTRAL_API_KEY`, denies `auth.json`, starts Mistral.
 
-```sh
-n-pi-azure
-```
+Secrets live outside git in OAuth files or 1Password-backed nono `env_credentials`.
 
-Credential behavior:
+## nono profiles
 
-- Injects `AZURE_IPTAS_KEY` from `op://Private/iptas-local-dev/codex-azure-api-key` via nono `env_credentials`.
-- Does not read `~/.pi/agent/auth.json`.
-- Does not inject Mistral or OpenAI API-key variables.
-- Starts Pi with `--provider azure-iptas-chat --model DeepSeek-V4-Flash --api-key "$AZURE_IPTAS_KEY"`.
-
-The non-secret Azure model descriptor lives in `~/.pi/agent/models.json`. The actual key is not stored there.
-
-### `n-pi-mistral`
-
-Uses profile `pi-mistral-local` and injects only the Mistral key from 1Password:
-
-```sh
-n-pi-mistral
-```
-
-Credential behavior:
-
-- Injects `MISTRAL_API_KEY` from `op://Private/Mistral/API Key` via nono `env_credentials`.
-- Does not read `~/.pi/agent/auth.json`.
-- Does not inject Azure or OpenAI API-key variables.
-- Starts Pi with `--provider mistral --model mistral-large-latest --api-key "$MISTRAL_API_KEY"`.
-
-## Profile structure
-
-`pi-base-local` contains the shared sandbox policy. Provider profiles are intentionally small and inherit from it:
-
-- `pi-base-local`: no extra credentials; allows `~/.pi/agent/auth.json` for subscription OAuth and is used directly by `n-pi-openai`.
-- `pi-azure-local`: injects only `AZURE_IPTAS_KEY` and denies `~/.pi/agent/auth.json`.
-- `pi-mistral-local`: injects only `MISTRAL_API_KEY` and denies `~/.pi/agent/auth.json`.
-
-Shared policy in `pi-base-local`:
-
-- Uses `environment.allow_vars` to pass only basic shell/UI/terminal variables; injected credentials bypass this allow-list by nono design.
-- Blocks common container control sockets with `filesystem.deny` instead of raw macOS Seatbelt rules.
-- Keeps network direct; no nono reverse proxy credential injection is used.
-
-Terminal/color handling:
-
-- Pi is installed via Homebrew as a Node script (`/opt/homebrew/bin/pi`).
-- The previous mise standalone Bun binary dropped most of `process.env` inside nono on macOS, causing Pi to fall back from truecolor to saturated 256-color tool backgrounds.
-- With the Homebrew/Node install, terminal variables such as `TERM`, `COLORTERM`, and `TERMINFO` are visible to Pi directly, so no terminal-env extension or wrapper flags are needed.
-
-## Files
-
-Shell functions:
-
-- `~/.zshrc`
-
-nono profiles:
-
-- `~/.config/nono/profiles/pi-base-local.json`
-- `~/.config/nono/profiles/pi-azure-local.json`
-- `~/.config/nono/profiles/pi-mistral-local.json`
-
-Pi config:
-
-- `~/.pi/agent/models.json`
-- `~/.pi/agent/settings.json`
-- `~/.pi/agent/extensions/linear-plannotator.ts` — `/linear-pull` and `/linear-sync`
-- `~/.pi/agent/prompts/linear-plannotator.md` — manual `/linear-plannotator <LINEAR-ID>` prompt template
-- `~/.pi/agent/extensions/chatgpt-limit.ts` — local ChatGPT usage footer
-- `~/.pi/agent/extensions/exit-alias.ts` — `/exit` alias
-
-## Maintenance notes
-
-Run this after editing the shell functions:
-
-```sh
-source ~/.zshrc
-```
-
-Validate profiles with:
+Validate profiles:
 
 ```sh
 nono profile validate pi-base-local
@@ -107,7 +80,7 @@ nono profile validate pi-azure-local
 nono profile validate pi-mistral-local
 ```
 
-Inspect profile inheritance and diffs with:
+Inspect profile inheritance and diffs:
 
 ```sh
 nono profile show pi-base-local
@@ -123,4 +96,27 @@ nono run --silent --allow-cwd --profile pi-azure-local -- \
 
 nono run --silent --allow-cwd --profile pi-mistral-local -- \
   /bin/sh -c 'echo MISTRAL_API_KEY=$([ -n "${MISTRAL_API_KEY:-}" ] && echo present || echo absent)'
+```
+
+## Verification after config changes
+
+```sh
+git status --short --ignored
+```
+
+In Pi:
+
+```text
+/reload
+/hotkeys
+/plan-status
+/plannotator
+```
+
+For Linear and MCP:
+
+```text
+/linear-pull ENG-123
+mcp({ "action": "status" })
+mcp({ "action": "search", "query": "linear" })
 ```

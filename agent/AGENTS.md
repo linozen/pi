@@ -35,6 +35,7 @@ Do not suggest `sudo`, `chmod`, `chown`, Full Disk Access, or Pi approval change
 - Before adding dependencies, check whether the standard library, platform, or existing lockfile already covers the need.
 - Do not introduce abstractions with only one implementation.
 - Make small conventional commits when asked to commit.
+- Treat repo-local plan markdown files as temporary Plannotator working files. Iterate on them during planning, then delete them before final cleanup commits unless the user asks to keep them. Plannotator tools can always be used to get structured feedback from a human operator, and Plannotator snapshots plan history under `~/.plannotator`.
 - Leave one runnable verification for non-trivial logic.
 
 ## This `~/.pi` config
