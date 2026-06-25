@@ -13,6 +13,9 @@
     "npm:@plannotator/pi-extension",
     "npm:@tavily/pi-extension"
   ],
+  "extensions": [
+    "extensions"
+  ],
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": false,
   "theme": "zedokai-pi"
