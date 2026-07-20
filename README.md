@@ -29,6 +29,12 @@ For Linear-backed work, use the local command wrapper:
 /linear-pull ENG-123
 ```
 
+After the plan is approved, compact the planning context and begin implementation:
+
+```text
+/linear-implement ENG-123
+```
+
 After implementation, sync the outcome back to Linear:
 
 ```text
@@ -37,17 +43,25 @@ After implementation, sync the outcome back to Linear:
 
 For non-Linear work, skip Linear and ask directly for a Plannotator-reviewed plan. The Plannotator tools can always be used to get structured feedback from a human operator.
 
-Plan markdown files created during this loop are temporary repo-local working files. Iterate on them for Plannotator review, then delete them before the final cleanup commit unless a plan is intentionally being preserved. Plannotator keeps review snapshots under `~/.plannotator`.
+Plan markdown files created during this loop are temporary repo-local working files. Use `.plans/*.md` for the current task only, keep at most one active plan per checkout, and keep it aligned with that task. Delete plan files before the final cleanup commit unless a plan is intentionally being preserved. Plannotator keeps review snapshots under `~/.plannotator`.
+
+Do not run competing work in the same checkout. If another unrelated task, branch, or plan needs to proceed before the current one is cleaned up, create or switch to a separate `git worktree` for that work.
 
 ## Retained components
 
 - `agent/settings.json` — Pi package/model/theme entry point.
 - `agent/models.json` — non-secret Azure/IPTAS model descriptor for the optional Azure launcher.
+- `agent/mcp.json` — local MCP server definitions using environment placeholders for credentials.
 - `agent/plannotator.json` — short Plannotator phase labels.
 - `agent/prompts/linear-plannotator.md` — prompt-template fallback for Linear issue planning.
-- `agent/extensions/linear-plannotator.ts` — command surface for `/plan`, `/plannotator`, `/plan-status`, `/linear-pull`, `/linear-sync`, and `Ctrl+Super+P`.
-- `agent/extensions/statusline.ts` — custom one-line footer/statusline and ChatGPT usage command.
-- `agent/extensions/exit-alias.ts` — `/exit` alias.
+- `agent/extensions/linear-plannotator.ts` — command surface for `/plan`, `/plan-status`, `/linear-pull`, `/linear-implement`, `/linear-sync`, and `Ctrl+Super+P`; the installed Plannotator package owns `/plannotator`.
+- `agent/extensions/statusline.ts` — custom one-line footer/statusline and `/chatgpt-limit` usage command.
+- `agent/extensions/aliases.ts` — `/exit`, `/exti`, `/q`, and `/bye` aliases.
+- `agent/extensions/context.ts` — `/context` report and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
+- `agent/extensions/subagents.ts` — local inspectable `subagent` tool, live progress/token/tool-call updates, timeout confirmation, `/subagents` profile listing, `/subagents doctor`, and `/subagents run <profile> <task>`.
+- `agent/extensions/ask-user-question.ts` — local inspectable `ask_user_question` tool for structured clarifying questions.
+- `agent/extensions/terminal-title.ts` — keeps the terminal title aligned with the Pi session and working directory.
+- `agent/extensions/zed-bell.ts` — terminal bell notification for Zed Terminal Threads when a Pi turn finishes.
 - `agent/extensions/local-mcp-adapter/` — local MCP proxy extension.
 - `agent/keybindings.json` — small TUI navigation keybindings.
 - `agent/themes/zedokai-pi.json` — custom theme.
@@ -102,6 +116,7 @@ nono run --silent --allow-cwd --profile pi-mistral-local -- \
 
 ```sh
 git status --short --ignored
+PI_OFFLINE=1 pi --no-session --list-models >/dev/null
 ```
 
 In Pi:
@@ -111,12 +126,18 @@ In Pi:
 /hotkeys
 /plan-status
 /plannotator
+/chatgpt-limit
+/context
+/subagents
+/subagents doctor
 ```
 
 For Linear and MCP:
 
 ```text
 /linear-pull ENG-123
+/linear-implement ENG-123
+/linear-sync ENG-123
 mcp({ "action": "status" })
 mcp({ "action": "search", "query": "linear" })
 ```
