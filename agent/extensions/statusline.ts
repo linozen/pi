@@ -20,6 +20,7 @@ type UsageSnapshot = {
 type State = {
 	snapshot?: UsageSnapshot;
 	inFlight?: Promise<UsageSnapshot | undefined>;
+	queued?: Promise<UsageSnapshot | undefined>;
 	requestRender: () => void;
 };
 
@@ -141,13 +142,30 @@ function usageColor(percent: number | undefined | null): FooterColor {
 function formatChatGptLimit(ctx: ExtensionContext, snapshot: UsageSnapshot | undefined, theme: any): string | undefined {
 	if (!isOpenAICodexProvider(ctx.model?.provider) || !snapshot) return undefined;
 
-	return `${theme.fg("dim", "5h ")}${theme.fg(usageColor(snapshot.fiveHour?.usedPercent), usedPercent(snapshot.fiveHour))}${theme.fg("dim", " / W ")}${theme.fg(usageColor(snapshot.weekly?.usedPercent), usedPercent(snapshot.weekly))}`;
+	const limits = [
+		snapshot.fiveHour && `${theme.fg("dim", "5h ")}${theme.fg(usageColor(snapshot.fiveHour.usedPercent), usedPercent(snapshot.fiveHour))}`,
+		snapshot.weekly && `${theme.fg("dim", "W ")}${theme.fg(usageColor(snapshot.weekly.usedPercent), usedPercent(snapshot.weekly))}`,
+	].filter((limit): limit is string => Boolean(limit));
+	return limits.length ? limits.join(theme.fg("dim", " / ")) : undefined;
 }
 
-function cacheHitPercent(input: number, cacheRead: number): string | undefined {
-	const denominator = input + cacheRead;
-	if (!cacheRead || denominator <= 0) return undefined;
-	return `${((cacheRead / denominator) * 100).toFixed(1)}%`;
+const NONO_PROFILE_ENV_KEYS = ["NONO_PROFILE", "NONO_PROFILE_NAME", "NONO_PROFILE_ID"];
+
+function getNonoProfileName(): string | undefined {
+	for (const key of NONO_PROFILE_ENV_KEYS) {
+		const value = process.env[key]?.trim();
+		if (value) return value.split(/[\\/]/).pop()?.replace(/\.json$/i, "");
+	}
+	return undefined;
+}
+
+function formatExtensionStatus(rawText: unknown): string {
+	const text = String(rawText).replace(/[\r\n\t]+/g, " ").trim();
+	if (text === "nono sandbox") {
+		const profile = getNonoProfileName();
+		return profile ? `nono (${profile})` : text;
+	}
+	return text;
 }
 
 function extensionStatusText(footerData: any): string | undefined {
@@ -155,18 +173,23 @@ function extensionStatusText(footerData: any): string | undefined {
 	if (!statuses?.size) return undefined;
 	return Array.from(statuses.entries())
 		.sort(([a], [b]) => String(a).localeCompare(String(b)))
-		.map(([, text]) => String(text).replace(/[\r\n\t]+/g, " ").trim())
+		.map(([, text]) => formatExtensionStatus(text))
 		.filter(Boolean)
 		.join(" ");
+}
+
+function formatCwd(cwd: string): string {
+	const home = process.env.HOME || process.env.USERPROFILE;
+	if (!home) return cwd;
+	const isUnderHome = cwd === home || cwd.startsWith(`${home}/`) || cwd.startsWith(`${home}\\`);
+	return isUnderHome ? `~${cwd.slice(home.length)}` : cwd;
 }
 
 function renderOneLineFooter(pi: ExtensionAPI, ctx: ExtensionContext, state: State, footerData: any, width: number): string[] {
 	const theme = ctx.ui.theme;
 	const model = ctx.model;
 	const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
-	let latestAssistantUsage: any | undefined;
-
-	for (const entry of ctx.sessionManager.getEntries()) {
+	for (const entry of ctx.sessionManager.getBranch()) {
 		if (entry.type === "message" && entry.message.role === "assistant") {
 			const usage: any = entry.message.usage || {};
 			total.input += usage.input ?? 0;
@@ -174,21 +197,15 @@ function renderOneLineFooter(pi: ExtensionAPI, ctx: ExtensionContext, state: Sta
 			total.cacheRead += usage.cacheRead ?? 0;
 			total.cacheWrite += usage.cacheWrite ?? 0;
 			total.cost += usage.cost?.total ?? 0;
-			latestAssistantUsage = usage;
 		}
 	}
 
-	let cwd = ctx.sessionManager.getCwd();
-	const home = process.env.HOME || process.env.USERPROFILE;
-	if (home && cwd.startsWith(home)) cwd = `~${cwd.slice(home.length)}`;
-
-	const cwdPart = theme.fg("mdCode", cwd);
+	const cwdPart = theme.fg("mdCode", formatCwd(ctx.sessionManager.getCwd()));
 	const branch = footerData.getGitBranch?.();
 	const branchPart = branch ? ` ${theme.fg("success", `(${branch})`)}` : "";
 	const sessionName = ctx.sessionManager.getSessionName?.();
 	const sessionPart = sessionName ? ` ${theme.fg("dim", `• ${sessionName}`)}` : "";
 	const statusText = extensionStatusText(footerData);
-	const statusPart = statusText ? ` ${theme.fg("dim", "•")} ${statusText}` : "";
 
 	const dimStat = (text: string) => theme.fg("dim", text);
 	const statsParts: string[] = [];
@@ -198,9 +215,10 @@ function renderOneLineFooter(pi: ExtensionAPI, ctx: ExtensionContext, state: Sta
 
 	const contextUsage = ctx.getContextUsage();
 	const contextWindow = contextUsage?.contextWindow ?? model?.contextWindow ?? 0;
-	const contextPercentValue = contextUsage?.percent ?? 0;
-	const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
-	const contextDisplay = contextPercent === "?" ? `?/${formatTokens(contextWindow)}` : `${contextPercent}%/${formatTokens(contextWindow)}`;
+	const contextPercent = contextUsage?.percent;
+	const contextDisplay = typeof contextPercent === "number"
+		? `${contextPercent.toFixed(1)}%/${formatTokens(contextWindow)}`
+		: `?/${formatTokens(contextWindow)}`;
 	statsParts.push(`${theme.fg(usageColor(contextUsage?.percent), contextDisplay)} ${dimStat("(auto)")}`);
 
 	const chatGptLimit = formatChatGptLimit(ctx, state.snapshot, theme);
@@ -215,22 +233,23 @@ function renderOneLineFooter(pi: ExtensionAPI, ctx: ExtensionContext, state: Sta
 				: `${theme.fg("dim", " • ")}${theme.fg(thinkingColor(thinkingLevel), thinkingLevel)}`;
 	}
 
-	const left = `${cwdPart}${branchPart}${sessionPart}${statusPart}${theme.fg("dim", " • ")}${statsParts.join(theme.fg("dim", " "))}`;
+	const left = `${cwdPart}${branchPart}${sessionPart}${theme.fg("dim", " • ")}${statsParts.join(theme.fg("dim", " "))}`;
 	let right = modelPart;
 	if (footerData.getAvailableProviderCount?.() > 1 && model) {
 		right = `${theme.fg("dim", `(${model.provider}) `)}${modelPart}`;
 	}
-
-	const minPadding = 2;
-	const leftWidth = visibleWidth(left);
-	const rightWidth = visibleWidth(right);
-	if (leftWidth + minPadding + rightWidth <= width) {
-		return [left + " ".repeat(width - leftWidth - rightWidth) + right];
+	if (statusText) {
+		right = `${right}${theme.fg("dim", " • ")}${statusText}`;
 	}
 
+	if (width <= 0) return [""];
+	const minPadding = Math.min(2, width);
+	const truncatedRight = truncateToWidth(right, Math.max(0, width - minPadding), "…");
+	const rightWidth = visibleWidth(truncatedRight);
 	const availableLeft = Math.max(0, width - rightWidth - minPadding);
 	const truncatedLeft = truncateToWidth(left, availableLeft, "…");
-	return [truncatedLeft + " ".repeat(Math.max(minPadding, width - visibleWidth(truncatedLeft) - rightWidth)) + right];
+	const padding = Math.max(0, width - visibleWidth(truncatedLeft) - rightWidth);
+	return [`${truncatedLeft}${" ".repeat(padding)}${truncatedRight}`];
 }
 
 function installFooter(pi: ExtensionAPI, ctx: ExtensionContext, state: State): void {
@@ -299,10 +318,23 @@ async function fetchUsage(ctx: ExtensionContext, state: State): Promise<UsageSna
 }
 
 function queueUsageRefresh(ctx: ExtensionContext, state: State): Promise<UsageSnapshot | undefined> {
-	state.inFlight = (state.inFlight || Promise.resolve())
-		.catch(() => undefined)
-		.then(() => fetchUsage(ctx, state));
-	return state.inFlight;
+	if (state.inFlight) {
+		if (!state.queued) {
+			const queued = state.inFlight
+				.catch(() => undefined)
+				.then(() => queueUsageRefresh(ctx, state))
+				.finally(() => {
+					if (state.queued === queued) state.queued = undefined;
+				});
+			state.queued = queued;
+		}
+		return state.queued!;
+	}
+	const request = fetchUsage(ctx, state).finally(() => {
+		if (state.inFlight === request) state.inFlight = undefined;
+	});
+	state.inFlight = request;
+	return request;
 }
 
 function refreshInBackground(ctx: ExtensionContext, state: State): void {
@@ -314,8 +346,8 @@ function usageDetails(snapshot: UsageSnapshot, provider: string | undefined): st
 		`provider: ${provider || "unknown"}`,
 		`plan: ${snapshot.planType || "unknown"}`,
 		...(snapshot.email ? [`email: ${snapshot.email}`] : []),
-		`5-hour: ${usedPercent(snapshot.fiveHour)} used, ${remainingPercent(snapshot.fiveHour)} left, resets ${resetLong(snapshot.fiveHour?.resetAt)}`,
-		`weekly: ${usedPercent(snapshot.weekly)} used, ${remainingPercent(snapshot.weekly)} left, resets ${resetLong(snapshot.weekly?.resetAt)}`,
+		...(snapshot.fiveHour ? [`5-hour: ${usedPercent(snapshot.fiveHour)} used, ${remainingPercent(snapshot.fiveHour)} left, resets ${resetLong(snapshot.fiveHour.resetAt)}`] : []),
+		...(snapshot.weekly ? [`weekly: ${usedPercent(snapshot.weekly)} used, ${remainingPercent(snapshot.weekly)} left, resets ${resetLong(snapshot.weekly.resetAt)}`] : []),
 		`fetched: ${new Date(snapshot.fetchedAt).toLocaleString()}`,
 		`endpoint: ${CHATGPT_BASE_URL}/wham/usage`,
 	];
@@ -329,7 +361,7 @@ export default function (pi: ExtensionAPI) {
 		refreshInBackground(ctx, state);
 	});
 	pi.on("model_select", (_event, ctx) => refreshInBackground(ctx, state));
-	pi.on("agent_end", (_event, ctx) => refreshInBackground(ctx, state));
+	pi.on("agent_settled", (_event, ctx) => refreshInBackground(ctx, state));
 	pi.on("session_shutdown", (_event, ctx) => {
 		ctx.ui.setStatus("chatgpt-limit", undefined);
 		ctx.ui.setStatus("statusline", undefined);
