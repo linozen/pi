@@ -67,6 +67,7 @@ type State = {
 	metadata: Map<string, ToolMetadata[]>;
 	lastErrors: Map<string, string>;
 	idleTimer?: NodeJS.Timeout;
+	refreshPromise?: Promise<void>;
 };
 
 const USER_SHARED_CONFIG = join(homedir(), ".config", "mcp", "mcp.json");
@@ -470,6 +471,8 @@ async function closeServer(state: State, serverName: string): Promise<void> {
 
 async function closeAll(state: State): Promise<void> {
 	if (state.idleTimer) clearInterval(state.idleTimer);
+	if (state.refreshPromise) await state.refreshPromise;
+	await Promise.allSettled([...state.connectPromises.values()]);
 	const connections = [...state.connections.values()];
 	state.connections.clear();
 	await Promise.allSettled(connections.map(closeConnection));
@@ -816,17 +819,70 @@ export default function localMcpAdapter(pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("refresh-mcp", {
+		description: "Reload MCP config and refresh tool metadata, optionally for one server",
+		handler: async (args, ctx) => {
+			await ctx.waitForIdle();
+			const serverName = args.trim() || undefined;
+			let config: State["config"];
+			try {
+				config = loadConfig(ctx.cwd);
+			} catch (error) {
+				if (ctx.hasUI) ctx.ui.notify(`Could not reload MCP config: ${error instanceof Error ? error.message : String(error)}`, "error");
+				return;
+			}
+			if (serverName && !config.mcpServers[serverName]) {
+				if (ctx.hasUI) ctx.ui.notify(`Unknown MCP server: ${serverName}`, "error");
+				return;
+			}
+
+			const previous = state;
+			if (previous) await closeAll(previous);
+			const metadata = loadCache();
+			for (const cachedServer of metadata.keys()) {
+				if (!config.mcpServers[cachedServer]) metadata.delete(cachedServer);
+			}
+			const next: State = {
+				config,
+				connections: new Map(),
+				connectPromises: new Map(),
+				metadata,
+				lastErrors: new Map(),
+			};
+			state = next;
+			startIdleCleanup(next);
+
+			const targets = serverName ? [serverName] : Object.keys(config.mcpServers);
+			let failures = 0;
+			for (const target of targets) {
+				try {
+					await refreshServerMetadata(next, target);
+				} catch {
+					failures++;
+				}
+			}
+			saveCache(next.metadata);
+			if (ctx.hasUI) {
+				const summary = failures
+					? `MCP refresh completed with ${failures} failure${failures === 1 ? "" : "s"}.`
+					: `MCP refresh completed for ${targets.length} server${targets.length === 1 ? "" : "s"}.`;
+				ctx.ui.notify(`${summary}\n\n${statusText(next)}`, failures ? "warning" : "info");
+			}
+		},
+	});
+
 	pi.on("session_start", async (_event, ctx) => {
 		if (state) await closeAll(state).catch(error => console.error("local MCP: cleanup failed", error));
-		state = {
+		const next: State = {
 			config: loadConfig(ctx.cwd),
 			connections: new Map(),
 			connectPromises: new Map(),
 			metadata: loadCache(),
 			lastErrors: new Map(),
 		};
-		startIdleCleanup(state);
-		void refreshAllMetadata(state).catch(error => console.error("local MCP: eager metadata refresh failed", error));
+		state = next;
+		startIdleCleanup(next);
+		next.refreshPromise = refreshAllMetadata(next).catch(error => console.error("local MCP: eager metadata refresh failed", error));
 	});
 
 	pi.on("session_shutdown", async () => {

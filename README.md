@@ -130,6 +130,7 @@ In Pi:
 /context
 /subagents
 /subagents doctor
+/refresh-mcp
 ```
 
 For Linear and MCP:

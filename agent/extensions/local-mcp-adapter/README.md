@@ -38,6 +38,15 @@ mcp({ "action": "call", "tool": "chrome_devtools_take_screenshot", "args": "{\"f
 
 `args` is a JSON string. Servers are lazy by default and disconnect after 10 idle minutes unless `idleTimeout` or `lifecycle` changes that behavior.
 
+After editing MCP config or restarting a server, reload config and tool metadata without reloading Pi:
+
+```text
+/refresh-mcp
+/refresh-mcp chrome-devtools
+```
+
+The optional argument refreshes only the named server. `/mcp` shows current adapter status.
+
 ## OAuth HTTP servers
 
 HTTP servers use MCP SDK OAuth support unless `auth` is explicitly `false`. For Linear:
