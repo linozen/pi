@@ -5,7 +5,7 @@
   "lastChangelogVersion": "0.79.6",
   "autocompleteMaxVisible": 15,
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.5",
+  "defaultModel": "gpt-5.6-sol",
   "packages": [
     {
       "source": "/Users/lino/.config/nono/packages/always-further/pi"
@@ -16,7 +16,7 @@
   "extensions": [
     "extensions"
   ],
-  "defaultThinkingLevel": "medium",
+  "defaultThinkingLevel": "xhigh",
   "hideThinkingBlock": false,
   "theme": "zedokai-pi"
 }
