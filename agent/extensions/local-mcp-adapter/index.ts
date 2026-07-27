@@ -1,49 +1,36 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, hasTrustRequiringProjectResources, ProjectTrustStore, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { auth, UnauthorizedError, type OAuthClientProvider, type OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-
-type McpTool = {
-	name: string;
-	title?: string;
-	description?: string;
-	inputSchema?: Record<string, unknown>;
-};
-
-type ServerDefinition = {
-	type?: "stdio" | "http";
-	auth?: "oauth" | false;
-	oauth?: {
-		scope?: string;
-		redirectUri?: string;
-		clientName?: string;
-		clientUri?: string;
-	};
-	command?: string;
-	args?: string[];
-	env?: Record<string, string>;
-	cwd?: string;
-	url?: string;
-	headers?: Record<string, string>;
-	lifecycle?: "lazy" | "eager" | "keep-alive";
-	idleTimeout?: number;
-	debug?: boolean;
-	excludeTools?: string[];
-};
-
-type McpConfig = {
-	settings?: {
-		idleTimeout?: number;
-		toolPrefix?: "server" | "short" | "none";
-	};
-	mcpServers?: Record<string, ServerDefinition>;
-};
+import { join, resolve } from "node:path";
+import {
+	assertMcpSuccess,
+	beginOAuthAttempt,
+	cleanupArtifactDirs,
+	createOAuthState,
+	effectiveLifecycle,
+	fullToolName,
+	isRecord,
+	loadConfigFromPaths,
+	metadataCachePayload,
+	oauthBindingFingerprint,
+	oauthStateMatches,
+	parseMetadataCache,
+	parseOAuthCompletion,
+	prepareMcpResult,
+	sanitizeUntrustedText,
+	type McpTool,
+	type ResolvedMcpConfig,
+	type ServerDefinition,
+	type ToolMetadata,
+	withFileLock,
+	writePrivateJson,
+} from "./core.ts";
 
 type Transport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport;
 
@@ -58,10 +45,10 @@ type Connection = {
 	status: "connected" | "closed";
 };
 
-type ToolMetadata = McpTool & { server: string; fullName: string };
-
 type State = {
-	config: Required<Pick<McpConfig, "mcpServers">> & Pick<McpConfig, "settings">;
+	config: ResolvedMcpConfig;
+	cacheExecutionScope: Record<string, unknown>;
+	skippedProjectConfigPaths: string[];
 	connections: Map<string, Connection>;
 	connectPromises: Map<string, Promise<Connection>>;
 	metadata: Map<string, ToolMetadata[]>;
@@ -134,10 +121,6 @@ class SimpleText {
 	invalidate(): void {}
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
 function expandPath(value: string | undefined): string | undefined {
 	if (!value) return undefined;
 	const expanded = value
@@ -155,71 +138,50 @@ function expandRecord(values: Record<string, string> | undefined): Record<string
 	return out;
 }
 
-function readConfig(path: string): McpConfig | undefined {
-	if (!existsSync(path)) return undefined;
-	const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
-	if (!isRecord(parsed)) return undefined;
-	const servers = isRecord(parsed.mcpServers) ? parsed.mcpServers as Record<string, ServerDefinition> : {};
-	const settings = isRecord(parsed.settings) ? parsed.settings as McpConfig["settings"] : undefined;
-	return { mcpServers: servers, settings };
+function projectConfigTrusted(cwd: string, sessionProjectTrusted: boolean): boolean {
+	if (!sessionProjectTrusted) return false;
+	if (hasTrustRequiringProjectResources(cwd)) return true;
+	return new ProjectTrustStore(getAgentDir()).get(cwd) === true;
 }
 
-function mergeConfig(base: McpConfig, next: McpConfig | undefined): McpConfig {
-	if (!next) return base;
-	return {
-		mcpServers: { ...(base.mcpServers ?? {}), ...(next.mcpServers ?? {}) },
-		settings: { ...(base.settings ?? {}), ...(next.settings ?? {}) },
-	};
+function loadConfig(cwd: string, sessionProjectTrusted: boolean) {
+	const projectPaths = [resolve(cwd, PROJECT_SHARED_CONFIG), resolve(cwd, PROJECT_PI_CONFIG)];
+	const includeProjectConfig = projectPaths.some(existsSync) && projectConfigTrusted(cwd, sessionProjectTrusted);
+	return loadConfigFromPaths([USER_SHARED_CONFIG, USER_PI_CONFIG], projectPaths, includeProjectConfig);
 }
 
-function loadConfig(cwd: string): State["config"] {
-	const paths = [
-		USER_SHARED_CONFIG,
-		USER_PI_CONFIG,
-		resolve(cwd, PROJECT_SHARED_CONFIG),
-		resolve(cwd, PROJECT_PI_CONFIG),
-	];
-	let config: McpConfig = { mcpServers: {} };
-	for (const path of paths) config = mergeConfig(config, readConfig(path));
-	return { mcpServers: config.mcpServers ?? {}, settings: config.settings };
+function cacheExecutionScope(cwd: string, config: ResolvedMcpConfig): Record<string, unknown> {
+	const inheritedNames = process.platform === "win32"
+		? ["APPDATA", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", "PATH", "PROCESSOR_ARCHITECTURE", "SYSTEMDRIVE", "SYSTEMROOT", "TEMP", "USERNAME", "USERPROFILE", "PROGRAMFILES"]
+		: ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"];
+	const referencedNames = new Set(inheritedNames);
+	for (const match of JSON.stringify(config).matchAll(/\$\{(\w+)\}|\$env:(\w+)/g)) {
+		const name = match[1] ?? match[2];
+		if (name) referencedNames.add(name);
+	}
+	const environment = Object.fromEntries([...referencedNames].sort().map(name => [name, process.env[name] ?? null]));
+	return { cwd: resolve(cwd), environment };
 }
 
-function toolPrefix(serverName: string, mode: McpConfig["settings"] extends infer S ? S extends { toolPrefix?: infer T } ? T : never : never): string {
-	if (mode === "none") return "";
-	if (mode === "short") return serverName.replace(/[-_]?mcp$/i, "").replace(/[^a-zA-Z0-9]+/g, "_");
-	return serverName.replace(/[^a-zA-Z0-9]+/g, "_");
-}
-
-function fullToolName(serverName: string, toolName: string, settings: McpConfig["settings"]): string {
-	const prefix = toolPrefix(serverName, settings?.toolPrefix ?? "server");
-	return prefix ? `${prefix}_${toolName}` : toolName;
-}
-
-function loadCache(): Map<string, ToolMetadata[]> {
+function loadCache(config: ResolvedMcpConfig, executionScope: Record<string, unknown>): Map<string, ToolMetadata[]> {
 	try {
 		if (!existsSync(CACHE_PATH)) return new Map();
-		const parsed = JSON.parse(readFileSync(CACHE_PATH, "utf8")) as unknown;
-		if (!isRecord(parsed) || !isRecord(parsed.servers)) return new Map();
-		const map = new Map<string, ToolMetadata[]>();
-		for (const [server, tools] of Object.entries(parsed.servers)) {
-			if (Array.isArray(tools)) map.set(server, tools as ToolMetadata[]);
-		}
-		return map;
+		return parseMetadataCache(JSON.parse(readFileSync(CACHE_PATH, "utf8")) as unknown, config, executionScope);
 	} catch {
 		return new Map();
 	}
 }
 
-function saveCache(metadata: Map<string, ToolMetadata[]>): void {
+function saveCache(state: State): void {
 	try {
-		mkdirSync(dirname(CACHE_PATH), { recursive: true });
-		writeFileSync(CACHE_PATH, JSON.stringify({ version: 1, updatedAt: Date.now(), servers: Object.fromEntries(metadata) }, null, 2));
+		writePrivateJson(CACHE_PATH, metadataCachePayload(state.config, state.metadata, state.cacheExecutionScope));
 	} catch (error) {
 		console.error("local MCP: failed to save metadata cache", error);
 	}
 }
 
 type OAuthServerState = {
+	binding?: string;
 	clientInformation?: OAuthClientInformationMixed;
 	tokens?: OAuthTokens;
 	codeVerifier?: string;
@@ -228,56 +190,84 @@ type OAuthServerState = {
 };
 
 type OAuthStore = {
-	version: 1;
+	version: 2;
 	servers: Record<string, OAuthServerState>;
 };
 
 function loadOAuthStore(): OAuthStore {
 	try {
-		if (!existsSync(OAUTH_STORE_PATH)) return { version: 1, servers: {} };
+		if (!existsSync(OAUTH_STORE_PATH)) return { version: 2, servers: {} };
 		const parsed = JSON.parse(readFileSync(OAUTH_STORE_PATH, "utf8")) as unknown;
-		if (!isRecord(parsed) || !isRecord(parsed.servers)) return { version: 1, servers: {} };
-		return { version: 1, servers: parsed.servers as Record<string, OAuthServerState> };
+		if (!isRecord(parsed) || !isRecord(parsed.servers)) return { version: 2, servers: {} };
+		return { version: 2, servers: parsed.servers as Record<string, OAuthServerState> };
 	} catch {
-		return { version: 1, servers: {} };
+		return { version: 2, servers: {} };
 	}
 }
 
 function saveOAuthStore(store: OAuthStore): void {
-	mkdirSync(dirname(OAUTH_STORE_PATH), { recursive: true });
-	writeFileSync(OAUTH_STORE_PATH, JSON.stringify(store, null, 2), { mode: 0o600 });
-	chmodSync(OAUTH_STORE_PATH, 0o600);
+	writePrivateJson(OAUTH_STORE_PATH, store);
 }
 
-function getOAuthServerState(serverName: string): OAuthServerState {
-	const store = loadOAuthStore();
-	store.servers[serverName] ??= {};
-	return store.servers[serverName];
+function withOAuthStore<T>(operation: (store: OAuthStore) => T): T {
+	return withFileLock(OAUTH_STORE_PATH, () => operation(loadOAuthStore()));
 }
 
-function updateOAuthServerState(serverName: string, update: (state: OAuthServerState) => void): void {
-	const store = loadOAuthStore();
-	store.servers[serverName] ??= {};
-	update(store.servers[serverName]);
-	saveOAuthStore(store);
+function boundOAuthServerState(store: OAuthStore, serverName: string, definition: ServerDefinition): { state: OAuthServerState; reset: boolean } {
+	const binding = oauthBindingFingerprint(definition);
+	const existing = store.servers[serverName];
+	if (existing?.binding === binding) return { state: existing, reset: false };
+	const state = { binding };
+	store.servers[serverName] = state;
+	return { state, reset: true };
+}
+
+function getOAuthServerState(serverName: string, definition: ServerDefinition): OAuthServerState {
+	return withOAuthStore(store => {
+		const bound = boundOAuthServerState(store, serverName, definition);
+		if (bound.reset) saveOAuthStore(store);
+		return { ...bound.state };
+	});
+}
+
+function updateOAuthServerState(serverName: string, definition: ServerDefinition, update: (state: OAuthServerState) => void): void {
+	withOAuthStore(store => {
+		const bound = boundOAuthServerState(store, serverName, definition);
+		update(bound.state);
+		saveOAuthStore(store);
+	});
 }
 
 function clearOAuthServerState(serverName: string): void {
-	const store = loadOAuthStore();
-	delete store.servers[serverName];
-	saveOAuthStore(store);
+	withOAuthStore(store => {
+		delete store.servers[serverName];
+		saveOAuthStore(store);
+	});
 }
 
-function randomState(): string {
-	return Math.random().toString(36).slice(2) + Date.now().toString(36);
+function consumeOAuthState(serverName: string, definition: ServerDefinition, expected: string): boolean {
+	let consumed = false;
+	updateOAuthServerState(serverName, definition, state => {
+		if (state.state && oauthStateMatches(state.state, expected)) {
+			delete state.state;
+			consumed = true;
+		}
+	});
+	return consumed;
 }
 
 class LocalOAuthProvider implements OAuthClientProvider {
 	private authorizationUrl?: URL;
+	private authorizationState?: string;
+	private readonly serverName: string;
+	private readonly definition: ServerDefinition;
 	private readonly redirect: string;
 	private readonly metadata: OAuthClientMetadata;
 
-	constructor(private readonly serverName: string, private readonly definition: ServerDefinition) {
+	constructor(serverName: string, definition: ServerDefinition, authorizationState?: string) {
+		this.serverName = serverName;
+		this.definition = definition;
+		this.authorizationState = authorizationState;
 		this.redirect = definition.oauth?.redirectUri ?? DEFAULT_REDIRECT_URL;
 		this.metadata = {
 			client_name: definition.oauth?.clientName ?? "Pi local MCP adapter",
@@ -302,27 +292,32 @@ class LocalOAuthProvider implements OAuthClientProvider {
 	}
 
 	state(): string {
-		const existing = getOAuthServerState(this.serverName).state;
-		if (existing) return existing;
-		const next = randomState();
-		updateOAuthServerState(this.serverName, state => { state.state = next; });
+		if (this.authorizationState) return this.authorizationState;
+		const existing = getOAuthServerState(this.serverName, this.definition).state;
+		if (existing) {
+			this.authorizationState = existing;
+			return existing;
+		}
+		const next = createOAuthState();
+		updateOAuthServerState(this.serverName, this.definition, state => { state.state = next; });
+		this.authorizationState = next;
 		return next;
 	}
 
 	clientInformation(): OAuthClientInformationMixed | undefined {
-		return getOAuthServerState(this.serverName).clientInformation;
+		return getOAuthServerState(this.serverName, this.definition).clientInformation;
 	}
 
 	saveClientInformation(clientInformation: OAuthClientInformationMixed): void {
-		updateOAuthServerState(this.serverName, state => { state.clientInformation = clientInformation; });
+		updateOAuthServerState(this.serverName, this.definition, state => { state.clientInformation = clientInformation; });
 	}
 
 	tokens(): OAuthTokens | undefined {
-		return getOAuthServerState(this.serverName).tokens;
+		return getOAuthServerState(this.serverName, this.definition).tokens;
 	}
 
 	saveTokens(tokens: OAuthTokens): void {
-		updateOAuthServerState(this.serverName, state => { state.tokens = tokens; });
+		updateOAuthServerState(this.serverName, this.definition, state => { state.tokens = tokens; });
 	}
 
 	redirectToAuthorization(authorizationUrl: URL): void {
@@ -330,21 +325,29 @@ class LocalOAuthProvider implements OAuthClientProvider {
 	}
 
 	saveCodeVerifier(codeVerifier: string): void {
-		updateOAuthServerState(this.serverName, state => { state.codeVerifier = codeVerifier; });
+		const authorizationState = this.authorizationState;
+		let saved = false;
+		updateOAuthServerState(this.serverName, this.definition, state => {
+			if (!authorizationState || state.state === authorizationState) {
+				state.codeVerifier = codeVerifier;
+				saved = true;
+			}
+		});
+		if (!saved) throw new Error(`OAuth attempt for ${this.serverName} was superseded. Run auth-start again.`);
 	}
 
 	codeVerifier(): string {
-		const verifier = getOAuthServerState(this.serverName).codeVerifier;
+		const verifier = getOAuthServerState(this.serverName, this.definition).codeVerifier;
 		if (!verifier) throw new Error(`No OAuth code verifier saved for ${this.serverName}. Run mcp({ action: "auth-start", server: "${this.serverName}" }) first.`);
 		return verifier;
 	}
 
 	saveDiscoveryState(discoveryState: OAuthDiscoveryState): void {
-		updateOAuthServerState(this.serverName, state => { state.discoveryState = discoveryState; });
+		updateOAuthServerState(this.serverName, this.definition, state => { state.discoveryState = discoveryState; });
 	}
 
 	discoveryState(): OAuthDiscoveryState | undefined {
-		return getOAuthServerState(this.serverName).discoveryState;
+		return getOAuthServerState(this.serverName, this.definition).discoveryState;
 	}
 
 	invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier" | "discovery"): void {
@@ -352,13 +355,17 @@ class LocalOAuthProvider implements OAuthClientProvider {
 			clearOAuthServerState(this.serverName);
 			return;
 		}
-		updateOAuthServerState(this.serverName, state => {
+		updateOAuthServerState(this.serverName, this.definition, state => {
 			if (scope === "client") delete state.clientInformation;
 			if (scope === "tokens") delete state.tokens;
 			if (scope === "verifier") delete state.codeVerifier;
 			if (scope === "discovery") delete state.discoveryState;
 		});
 	}
+}
+
+function sanitizedError(error: unknown): Error {
+	return new Error(sanitizeUntrustedText(error instanceof Error ? error.message : String(error)), { cause: error });
 }
 
 function shouldUseOAuth(definition: ServerDefinition): boolean {
@@ -369,31 +376,17 @@ function oauthProvider(serverName: string, definition: ServerDefinition): LocalO
 	return shouldUseOAuth(definition) ? new LocalOAuthProvider(serverName, definition) : undefined;
 }
 
-function extractAuthCode(input: string | undefined): string | undefined {
-	if (!input) return undefined;
-	let raw = input.trim();
-	try {
-		const parsed = JSON.parse(raw) as unknown;
-		if (isRecord(parsed)) {
-			if (typeof parsed.code === "string") return parsed.code;
-			if (typeof parsed.redirectUrl === "string") raw = parsed.redirectUrl;
-		}
-	} catch {
-		// Accept a raw code or URL.
-	}
-	try {
-		return new URL(raw).searchParams.get("code") ?? undefined;
-	} catch {
-		return raw || undefined;
-	}
-}
-
 async function startOAuth(state: State, serverName: string): Promise<string> {
 	const definition = state.config.mcpServers[serverName];
 	if (!definition?.url) throw new Error(`Server ${serverName} is not an HTTP MCP server.`);
-	const provider = new LocalOAuthProvider(serverName, definition);
-	const result = await auth(provider, { serverUrl: definition.url, scope: definition.oauth?.scope });
-	if (result === "AUTHORIZED") return `OAuth already authorized for ${serverName}.`;
+	let authorizationState = "";
+	updateOAuthServerState(serverName, definition, oauthState => { authorizationState = beginOAuthAttempt(oauthState); });
+	const provider = new LocalOAuthProvider(serverName, definition, authorizationState);
+	const result = await auth(provider, { serverUrl: definition.url, scope: definition.oauth?.scope }).catch(error => { throw sanitizedError(error); });
+	if (result === "AUTHORIZED") {
+		consumeOAuthState(serverName, definition, authorizationState);
+		return `OAuth already authorized for ${serverName}.`;
+	}
 	const url = provider.getAuthorizationUrl();
 	if (!url) throw new Error(`OAuth did not produce an authorization URL for ${serverName}.`);
 	return [
@@ -404,18 +397,18 @@ async function startOAuth(state: State, serverName: string): Promise<string> {
 		"",
 		"After approval, copy the full redirected localhost URL and run:",
 		`mcp({ action: "auth-complete", server: "${serverName}", args: '{"redirectUrl":"PASTE_URL_HERE"}' })`,
-		"",
-		"You may also pass just the code value as args.",
 	].join("\n");
 }
 
 async function completeOAuth(state: State, serverName: string, input: string | undefined): Promise<string> {
 	const definition = state.config.mcpServers[serverName];
 	if (!definition?.url) throw new Error(`Server ${serverName} is not an HTTP MCP server.`);
-	const code = extractAuthCode(input);
-	if (!code) throw new Error("OAuth completion needs args containing either {\"redirectUrl\":\"...\"} or {\"code\":\"...\"}.");
-	const provider = new LocalOAuthProvider(serverName, definition);
-	const result = await auth(provider, { serverUrl: definition.url, authorizationCode: code, scope: definition.oauth?.scope });
+	const completion = parseOAuthCompletion(input);
+	if (!completion) throw new Error("OAuth completion needs a full redirect URL containing both code and state, or args containing {\"code\":\"...\",\"state\":\"...\"}.");
+	if (!consumeOAuthState(serverName, definition, completion.state)) throw new Error(`OAuth state mismatch for ${serverName}. Run auth-start again.`);
+	const provider = new LocalOAuthProvider(serverName, definition, completion.state);
+	const result = await auth(provider, { serverUrl: definition.url, authorizationCode: completion.code, scope: definition.oauth?.scope })
+		.catch(error => { throw sanitizedError(error); });
 	if (result !== "AUTHORIZED") throw new Error(`OAuth did not complete for ${serverName}.`);
 	await closeServer(state, serverName);
 	state.lastErrors.delete(serverName);
@@ -445,28 +438,31 @@ function metadataText(tool: ToolMetadata): string {
 	].filter(Boolean).join("\n");
 }
 
-function transformContent(content: unknown): Array<Record<string, unknown>> {
-	if (!Array.isArray(content)) return [{ type: "text", text: JSON.stringify(content) }];
-	return content.map((item) => {
-		if (!isRecord(item)) return { type: "text", text: String(item) };
-		if (item.type === "text") return { type: "text", text: typeof item.text === "string" ? item.text : "" };
-		if (item.type === "image") return { type: "image", data: item.data ?? "", mimeType: item.mimeType ?? "image/png" };
-		if (item.type === "resource") return { type: "text", text: `[Resource]\n${JSON.stringify(item.resource ?? item)}` };
-		if (item.type === "resource_link") return { type: "text", text: `[Resource Link]\n${String(item.uri ?? "")}` };
-		return { type: "text", text: JSON.stringify(item) };
-	});
-}
-
 async function closeConnection(connection: Connection): Promise<void> {
-	connection.status = "closed";
-	await Promise.allSettled([connection.client.close(), connection.transport.close()]);
+	try {
+		await connection.client.close();
+		connection.status = "closed";
+		return;
+	} catch (clientError) {
+		try {
+			await connection.transport.close();
+			connection.status = "closed";
+			return;
+		} catch (transportError) {
+			connection.status = "closed";
+			throw new AggregateError([clientError, transportError], `Failed to close MCP server ${connection.name}`);
+		}
+	}
 }
 
 async function closeServer(state: State, serverName: string): Promise<void> {
 	const connection = state.connections.get(serverName);
 	if (!connection) return;
-	state.connections.delete(serverName);
-	await closeConnection(connection);
+	try {
+		await closeConnection(connection);
+	} finally {
+		state.connections.delete(serverName);
+	}
 }
 
 async function closeAll(state: State): Promise<void> {
@@ -476,7 +472,7 @@ async function closeAll(state: State): Promise<void> {
 	const connections = [...state.connections.values()];
 	state.connections.clear();
 	await Promise.allSettled(connections.map(closeConnection));
-	saveCache(state.metadata);
+	saveCache(state);
 }
 
 async function createHttpTransport(serverName: string, definition: ServerDefinition): Promise<Transport> {
@@ -542,9 +538,16 @@ async function connectServer(state: State, serverName: string): Promise<Connecti
 				inFlight: 0,
 				status: "connected",
 			};
+			client.onclose = () => {
+				connection.status = "closed";
+				if (state.connections.get(serverName) === connection) state.connections.delete(serverName);
+			};
+			client.onerror = error => {
+				state.lastErrors.set(serverName, sanitizeUntrustedText(error.message));
+			};
 			state.connections.set(serverName, connection);
 			state.metadata.set(serverName, connection.tools.map(tool => ({ ...tool, server: serverName, fullName: fullToolName(serverName, tool.name, state.config.settings) })));
-			saveCache(state.metadata);
+			saveCache(state);
 			state.lastErrors.delete(serverName);
 			return connection;
 		} catch (error) {
@@ -557,8 +560,9 @@ async function connectServer(state: State, serverName: string): Promise<Connecti
 	try {
 		return await promise;
 	} catch (error) {
-		state.lastErrors.set(serverName, error instanceof Error ? error.message : String(error));
-		throw error;
+		const message = sanitizeUntrustedText(error instanceof Error ? error.message : String(error));
+		state.lastErrors.set(serverName, message);
+		throw new Error(message, { cause: error });
 	} finally {
 		state.connectPromises.delete(serverName);
 	}
@@ -582,16 +586,24 @@ async function refreshServerMetadata(state: State, serverName: string): Promise<
 	state.metadata.set(serverName, connection.tools.map(tool => ({ ...tool, server: serverName, fullName: fullToolName(serverName, tool.name, state.config.settings) })));
 }
 
-async function refreshAllMetadata(state: State): Promise<void> {
-	for (const [serverName, definition] of Object.entries(state.config.mcpServers)) {
-		if (definition.lifecycle === "lazy") continue;
+async function refreshMetadataTargets(state: State, serverNames: string[]): Promise<string[]> {
+	const failures: string[] = [];
+	for (const serverName of serverNames) {
 		try {
 			await refreshServerMetadata(state, serverName);
 		} catch (error) {
-			state.lastErrors.set(serverName, error instanceof Error ? error.message : String(error));
+			failures.push(`${serverName}: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
-	saveCache(state.metadata);
+	saveCache(state);
+	return failures;
+}
+
+async function refreshAllMetadata(state: State): Promise<void> {
+	const eagerServers = Object.entries(state.config.mcpServers)
+		.filter(([, definition]) => effectiveLifecycle(definition) !== "lazy")
+		.map(([serverName]) => serverName);
+	await refreshMetadataTargets(state, eagerServers);
 }
 
 function allMetadata(state: State): ToolMetadata[] {
@@ -619,6 +631,8 @@ async function callMcpTool(state: State, toolName: string, argsJson?: string): P
 		const result = await connection.client.callTool({ name: meta.name, arguments: args });
 		connection.lastUsedAt = Date.now();
 		return result as Record<string, unknown>;
+	} catch (error) {
+		throw new Error(sanitizeUntrustedText(error instanceof Error ? error.message : String(error)), { cause: error });
 	} finally {
 		connection.inFlight--;
 	}
@@ -628,25 +642,41 @@ function startIdleCleanup(state: State): void {
 	state.idleTimer = setInterval(() => {
 		const now = Date.now();
 		for (const [serverName, connection] of state.connections) {
-			if (connection.definition.lifecycle === "keep-alive") continue;
+			if (effectiveLifecycle(connection.definition) === "keep-alive") continue;
 			const minutes = connection.definition.idleTimeout ?? state.config.settings?.idleTimeout ?? DEFAULT_IDLE_MINUTES;
 			if (minutes <= 0) continue;
 			if (connection.inFlight === 0 && now - connection.lastUsedAt > minutes * 60_000) {
-				void closeServer(state, serverName).catch(error => console.error(`local MCP: failed to close idle server ${serverName}`, error));
+				void closeServer(state, serverName).catch(error => console.error(sanitizeUntrustedText(`local MCP: failed to close idle server ${serverName}: ${error instanceof Error ? error.message : String(error)}`)));
 			}
 		}
 	}, 60_000);
 }
 
+function createState(loaded: ReturnType<typeof loadConfig>, cwd: string): State {
+	const executionScope = cacheExecutionScope(cwd, loaded.config);
+	return {
+		config: loaded.config,
+		cacheExecutionScope: executionScope,
+		skippedProjectConfigPaths: loaded.skippedProjectConfigPaths,
+		connections: new Map(),
+		connectPromises: new Map(),
+		metadata: loadCache(loaded.config, executionScope),
+		lastErrors: new Map(),
+	};
+}
+
 function statusText(state: State): string {
 	const lines = ["MCP servers:"];
-	for (const serverName of Object.keys(state.config.mcpServers)) {
+	for (const [serverName, definition] of Object.entries(state.config.mcpServers)) {
 		const connected = state.connections.has(serverName);
 		const tools = state.metadata.get(serverName)?.length ?? 0;
 		const error = state.lastErrors.get(serverName);
-		lines.push(`${connected ? "✓" : error ? "✗" : "○"} ${serverName}: ${tools} cached tools${error ? ` (${error})` : ""}`);
+		lines.push(`${connected ? "✓" : error ? "✗" : "○"} ${serverName} [${effectiveLifecycle(definition)}]: ${tools} cached tools${error ? ` (${error})` : ""}`);
 	}
 	if (lines.length === 1) lines.push("No MCP servers configured.");
+	if (state.skippedProjectConfigPaths.length) {
+		lines.push("", "Skipped untrusted project MCP config:", ...state.skippedProjectConfigPaths.map(path => `- ${path}`));
+	}
 	return lines.join("\n");
 }
 
@@ -682,7 +712,7 @@ function previewText(text: string): { text: string; truncated: boolean; lineCoun
 function renderMcpResult(result: { content?: unknown[]; isError?: boolean; details?: unknown }, options: { expanded?: boolean; isPartial?: boolean }, theme: { fg: (name: string, value: string) => string }) {
 	if (options.isPartial) return new SimpleText(theme.fg("warning", "MCP running..."));
 
-	const text = firstTextContent(result);
+	const text = sanitizeUntrustedText(firstTextContent(result));
 	const details = isRecord(result.details) ? result.details : {};
 	const count = typeof details.count === "number" ? ` (${details.count})` : "";
 	const status = result.isError ? theme.fg("error", "MCP error") : theme.fg("success", `MCP result${count}`);
@@ -705,15 +735,20 @@ function renderMcpResult(result: { content?: unknown[]; isError?: boolean; detai
 }
 
 function renderMcpCall(args: Record<string, unknown>, theme: { fg: (name: string, value: string) => string }) {
-	const action = typeof args.action === "string" ? args.action : "auto";
-	const server = typeof args.server === "string" ? ` ${args.server}` : "";
-	const tool = typeof args.tool === "string" ? ` ${args.tool}` : "";
+	const action = typeof args.action === "string" ? sanitizeUntrustedText(args.action) : "auto";
+	const server = typeof args.server === "string" ? ` ${sanitizeUntrustedText(args.server)}` : "";
+	const tool = typeof args.tool === "string" ? ` ${sanitizeUntrustedText(args.tool)}` : "";
 	const query = typeof args.query === "string" ? ` ${JSON.stringify(args.query)}` : "";
 	return new SimpleText(theme.fg("accent", `mcp ${action}${server}${tool}${query}`));
 }
 
 export default function localMcpAdapter(pi: ExtensionAPI) {
 	let state: State | undefined;
+	const artifactDirs = new Set<string>();
+	const boundedTextResult = (text: string, details: Record<string, unknown> = {}) => {
+		const prepared = prepareMcpResult({ content: [{ type: "text", text }] }, artifactDirs);
+		return { content: prepared.content, details: { ...prepared.details, ...details } };
+	};
 
 	pi.registerTool({
 		name: "mcp",
@@ -724,6 +759,7 @@ export default function localMcpAdapter(pi: ExtensionAPI) {
 			"Use mcp first with action='search' or action='list' to discover MCP tools before calling a specific MCP tool.",
 			"When calling MCP tools through mcp, pass args as a JSON string, not as an object.",
 		],
+		executionMode: "sequential",
 		parameters: {
 			type: "object",
 			properties: {
@@ -743,68 +779,72 @@ export default function localMcpAdapter(pi: ExtensionAPI) {
 		renderResult: renderMcpResult,
 
 		async execute(_toolCallId, params) {
-			if (!state) {
-				return { content: [{ type: "text", text: "MCP extension is not initialized yet." }], isError: true };
+			if (!state) throw new Error("MCP extension is not initialized yet.");
+			const current = state;
+			const action = params.action ?? (params.tool ? "call" : params.query ? "search" : params.server ? "list" : "status");
+			if (action === "status") {
+				return boundedTextResult(statusText(current), {
+					servers: Object.keys(current.config.mcpServers),
+					skippedProjectConfigPaths: current.skippedProjectConfigPaths,
+				});
 			}
-			try {
-				const action = params.action ?? (params.tool ? "call" : params.query ? "search" : params.server ? "list" : "status");
-				if (action === "status") return { content: [{ type: "text", text: statusText(state) }], details: { servers: Object.keys(state.config.mcpServers) } };
-				if (action === "auth-start") {
-					if (!params.server) throw new Error("server is required for auth-start");
-					return { content: [{ type: "text", text: await startOAuth(state, params.server) }] };
-				}
-				if (action === "auth-complete") {
-					if (!params.server) throw new Error("server is required for auth-complete");
-					return { content: [{ type: "text", text: await completeOAuth(state, params.server, params.args) }] };
-				}
-				if (action === "auth-clear") {
-					if (!params.server) throw new Error("server is required for auth-clear");
-					clearOAuthServerState(params.server);
-					await closeServer(state, params.server);
-					return { content: [{ type: "text", text: `Cleared OAuth tokens for ${params.server}.` }] };
-				}
-				if (action === "connect") {
-					if (!params.server) throw new Error("server is required for connect");
-					await refreshServerMetadata(state, params.server);
-					return { content: [{ type: "text", text: `Connected ${params.server}.` }] };
-				}
-				if (action === "disconnect") {
-					if (!params.server) throw new Error("server is required for disconnect");
-					await closeServer(state, params.server);
-					return { content: [{ type: "text", text: `Disconnected ${params.server}.` }] };
-				}
-				if (action === "refresh") {
-					if (params.server) await refreshServerMetadata(state, params.server);
-					else for (const serverName of Object.keys(state.config.mcpServers)) await refreshServerMetadata(state, serverName).catch(() => undefined);
-					saveCache(state.metadata);
-					return { content: [{ type: "text", text: "MCP metadata refreshed." }] };
-				}
-				if (action === "list") {
-					if (params.server && !state.metadata.has(params.server)) await refreshServerMetadata(state, params.server);
-					const tools = params.server ? state.metadata.get(params.server) ?? [] : allMetadata(state);
-					const text = tools.length ? tools.map(tool => `${tool.fullName} - ${tool.description ?? "(no description)"}`).join("\n") : statusText(state);
-					return { content: [{ type: "text", text }], details: { count: tools.length } };
-				}
-				if (action === "search") {
-					if (!params.query) throw new Error("query is required for search");
-					return { content: [{ type: "text", text: searchText(state, params.query, params.server) }] };
-				}
-				if (action === "describe") {
-					if (!params.tool) throw new Error("tool is required for describe");
-					const tool = findTool(state, params.tool);
-					if (!tool) throw new Error(`Unknown MCP tool: ${params.tool}`);
-					return { content: [{ type: "text", text: metadataText(tool) }], details: { tool } };
-				}
-				if (action === "call") {
-					if (!params.tool) throw new Error("tool is required for call");
-					const result = await callMcpTool(state, params.tool, params.args);
-					return { content: transformContent(result.content), details: { isError: result.isError === true, structuredContent: result.structuredContent ?? null }, isError: result.isError === true };
-				}
-				throw new Error(`Unknown MCP action: ${action}`);
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				return { content: [{ type: "text", text: message }], isError: true, details: { message } };
+			if (action === "auth-start") {
+				if (!params.server) throw new Error("server is required for auth-start");
+				return boundedTextResult(await startOAuth(current, params.server));
 			}
+			if (action === "auth-complete") {
+				if (!params.server) throw new Error("server is required for auth-complete");
+				return boundedTextResult(await completeOAuth(current, params.server, params.args));
+			}
+			if (action === "auth-clear") {
+				if (!params.server) throw new Error("server is required for auth-clear");
+				clearOAuthServerState(params.server);
+				await closeServer(current, params.server);
+				return boundedTextResult(`Cleared OAuth tokens for ${params.server}.`);
+			}
+			if (action === "connect") {
+				if (!params.server) throw new Error("server is required for connect");
+				await refreshServerMetadata(current, params.server);
+				return boundedTextResult(`Connected ${params.server}.`);
+			}
+			if (action === "disconnect") {
+				if (!params.server) throw new Error("server is required for disconnect");
+				if (!current.config.mcpServers[params.server]) throw new Error(`Unknown MCP server: ${params.server}`);
+				await closeServer(current, params.server);
+				return boundedTextResult(`Disconnected ${params.server}.`);
+			}
+			if (action === "refresh") {
+				const targets = params.server ? [params.server] : Object.keys(current.config.mcpServers);
+				if (params.server && !current.config.mcpServers[params.server]) throw new Error(`Unknown MCP server: ${params.server}`);
+				const failures = await refreshMetadataTargets(current, targets);
+				if (failures.length) throw new Error(`MCP metadata refresh failed:\n${failures.join("\n")}`);
+				return boundedTextResult(`MCP metadata refreshed for ${targets.length} server${targets.length === 1 ? "" : "s"}.`);
+			}
+			if (action === "list") {
+				if (params.server && !current.config.mcpServers[params.server]) throw new Error(`Unknown MCP server: ${params.server}`);
+				if (params.server && !current.metadata.has(params.server)) await refreshServerMetadata(current, params.server);
+				const tools = params.server ? current.metadata.get(params.server) ?? [] : allMetadata(current);
+				const text = tools.length ? tools.map(tool => `${tool.fullName} - ${tool.description ?? "(no description)"}`).join("\n") : statusText(current);
+				return boundedTextResult(text, { count: tools.length });
+			}
+			if (action === "search") {
+				if (!params.query) throw new Error("query is required for search");
+				if (params.server && !current.config.mcpServers[params.server]) throw new Error(`Unknown MCP server: ${params.server}`);
+				return boundedTextResult(searchText(current, params.query, params.server));
+			}
+			if (action === "describe") {
+				if (!params.tool) throw new Error("tool is required for describe");
+				const tool = findTool(current, params.tool);
+				if (!tool) throw new Error(`Unknown MCP tool: ${params.tool}`);
+				return boundedTextResult(metadataText(tool));
+			}
+			if (action === "call") {
+				if (!params.tool) throw new Error("tool is required for call");
+				const prepared = prepareMcpResult(await callMcpTool(current, params.tool, params.args), artifactDirs);
+				assertMcpSuccess(prepared);
+				return { content: prepared.content, details: prepared.details };
+			}
+			throw new Error(`Unknown MCP action: ${action}`);
 		},
 	});
 
@@ -815,7 +855,7 @@ export default function localMcpAdapter(pi: ExtensionAPI) {
 				if (ctx.hasUI) ctx.ui.notify("MCP extension is not initialized yet", "error");
 				return;
 			}
-			if (ctx.hasUI) ctx.ui.notify(statusText(state), "info");
+			if (ctx.hasUI) ctx.ui.notify(sanitizeUntrustedText(statusText(state)), "info");
 		},
 	});
 
@@ -824,62 +864,38 @@ export default function localMcpAdapter(pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			await ctx.waitForIdle();
 			const serverName = args.trim() || undefined;
-			let config: State["config"];
+			let loaded: ReturnType<typeof loadConfig>;
 			try {
-				config = loadConfig(ctx.cwd);
+				loaded = loadConfig(ctx.cwd, ctx.isProjectTrusted());
 			} catch (error) {
-				if (ctx.hasUI) ctx.ui.notify(`Could not reload MCP config: ${error instanceof Error ? error.message : String(error)}`, "error");
+				if (ctx.hasUI) ctx.ui.notify(sanitizeUntrustedText(`Could not reload MCP config: ${error instanceof Error ? error.message : String(error)}`), "error");
 				return;
 			}
-			if (serverName && !config.mcpServers[serverName]) {
-				if (ctx.hasUI) ctx.ui.notify(`Unknown MCP server: ${serverName}`, "error");
+			if (serverName && !loaded.config.mcpServers[serverName]) {
+				if (ctx.hasUI) ctx.ui.notify(sanitizeUntrustedText(`Unknown MCP server: ${serverName}`), "error");
 				return;
 			}
 
 			const previous = state;
 			if (previous) await closeAll(previous);
-			const metadata = loadCache();
-			for (const cachedServer of metadata.keys()) {
-				if (!config.mcpServers[cachedServer]) metadata.delete(cachedServer);
-			}
-			const next: State = {
-				config,
-				connections: new Map(),
-				connectPromises: new Map(),
-				metadata,
-				lastErrors: new Map(),
-			};
+			const next = createState(loaded, ctx.cwd);
 			state = next;
 			startIdleCleanup(next);
 
-			const targets = serverName ? [serverName] : Object.keys(config.mcpServers);
-			let failures = 0;
-			for (const target of targets) {
-				try {
-					await refreshServerMetadata(next, target);
-				} catch {
-					failures++;
-				}
-			}
-			saveCache(next.metadata);
+			const targets = serverName ? [serverName] : Object.keys(next.config.mcpServers);
+			const failures = await refreshMetadataTargets(next, targets);
 			if (ctx.hasUI) {
-				const summary = failures
-					? `MCP refresh completed with ${failures} failure${failures === 1 ? "" : "s"}.`
+				const summary = failures.length
+					? `MCP refresh completed with ${failures.length} failure${failures.length === 1 ? "" : "s"}:\n${failures.join("\n")}`
 					: `MCP refresh completed for ${targets.length} server${targets.length === 1 ? "" : "s"}.`;
-				ctx.ui.notify(`${summary}\n\n${statusText(next)}`, failures ? "warning" : "info");
+				ctx.ui.notify(sanitizeUntrustedText(`${summary}\n\n${statusText(next)}`), failures.length ? "warning" : "info");
 			}
 		},
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
 		if (state) await closeAll(state).catch(error => console.error("local MCP: cleanup failed", error));
-		const next: State = {
-			config: loadConfig(ctx.cwd),
-			connections: new Map(),
-			connectPromises: new Map(),
-			metadata: loadCache(),
-			lastErrors: new Map(),
-		};
+		const next = createState(loadConfig(ctx.cwd, ctx.isProjectTrusted()), ctx.cwd);
 		state = next;
 		startIdleCleanup(next);
 		next.refreshPromise = refreshAllMetadata(next).catch(error => console.error("local MCP: eager metadata refresh failed", error));
@@ -888,6 +904,10 @@ export default function localMcpAdapter(pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		const current = state;
 		state = undefined;
-		if (current) await closeAll(current);
+		try {
+			if (current) await closeAll(current);
+		} finally {
+			cleanupArtifactDirs(artifactDirs);
+		}
 	});
 }

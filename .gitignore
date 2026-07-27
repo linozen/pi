@@ -15,6 +15,7 @@ agent/sessions/
 agent/pi-crash.log
 agent/mcp-metadata-cache.json
 agent/models-store.json
+agent/trust.json
 agent/plannotator-review-status.json
 .rpiv/
 

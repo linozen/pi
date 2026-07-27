@@ -116,6 +116,7 @@ nono run --silent --allow-cwd --profile pi-mistral-local -- \
 
 ```sh
 git status --short --ignored
+npm --prefix agent/extensions/local-mcp-adapter test
 PI_OFFLINE=1 pi --no-session --list-models >/dev/null
 ```
 
