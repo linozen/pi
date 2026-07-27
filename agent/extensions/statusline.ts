@@ -1,5 +1,5 @@
 // Custom one-line statusline. Includes cwd, extension statuses, token/context stats, model,
-// thinking level, and ChatGPT Codex quota when available.
+// OpenRouter spend/rates, thinking level, and ChatGPT Codex quota when available.
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
@@ -96,6 +96,47 @@ function formatTokens(count: number): string {
 	return `${Math.round(count / 1000000)}M`;
 }
 
+type CostBreakdown = {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	total: number;
+};
+
+function formatUsd(amount: number): string {
+	return `$${amount.toFixed(amount < 1 ? 4 : 2)}`;
+}
+
+function formatRate(rate: number): string {
+	const value = Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+	return `$${value}/M`;
+}
+
+function formatOpenRouterPricing(
+	model: NonNullable<ExtensionContext["model"]>,
+	spend: CostBreakdown,
+	theme: any,
+): string {
+	const spendParts = [
+		spend.input > 0 && `↑${formatUsd(spend.input)}`,
+		spend.output > 0 && `↓${formatUsd(spend.output)}`,
+		spend.cacheRead > 0 && `R${formatUsd(spend.cacheRead)}`,
+		spend.cacheWrite > 0 && `W${formatUsd(spend.cacheWrite)}`,
+	].filter((part): part is string => Boolean(part));
+	const breakdown = spendParts.length ? ` (${spendParts.join(" ")})` : "";
+
+	const rates = [
+		`↑${formatRate(model.cost.input)}`,
+		`↓${formatRate(model.cost.output)}`,
+		model.cost.cacheRead > 0 && `R${formatRate(model.cost.cacheRead)}`,
+		model.cost.cacheWrite > 0 && `W${formatRate(model.cost.cacheWrite)}`,
+	].filter((rate): rate is string => Boolean(rate));
+
+	const rateLabel = model.cost.tiers?.length ? " @ base " : " @ ";
+	return `${theme.fg("accent", `OR ~${formatUsd(spend.total)}`)}${theme.fg("dim", breakdown)}${theme.fg("muted", `${rateLabel}${rates.join(" ")}`)}`;
+}
+
 function usedPercent(window: QuotaWindow | undefined): string {
 	if (!window) return "?%";
 	return `${Math.round(Math.max(0, Math.min(100, window.usedPercent)))}%`;
@@ -188,7 +229,8 @@ function formatCwd(cwd: string): string {
 function renderOneLineFooter(pi: ExtensionAPI, ctx: ExtensionContext, state: State, footerData: any, width: number): string[] {
 	const theme = ctx.ui.theme;
 	const model = ctx.model;
-	const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+	const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+	const openRouterSpend: CostBreakdown = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 	for (const entry of ctx.sessionManager.getBranch()) {
 		if (entry.type === "message" && entry.message.role === "assistant") {
 			const usage: any = entry.message.usage || {};
@@ -196,7 +238,16 @@ function renderOneLineFooter(pi: ExtensionAPI, ctx: ExtensionContext, state: Sta
 			total.output += usage.output ?? 0;
 			total.cacheRead += usage.cacheRead ?? 0;
 			total.cacheWrite += usage.cacheWrite ?? 0;
-			total.cost += usage.cost?.total ?? 0;
+
+			// shortcut: Attribute only primary assistant usage because nested tool
+			// usage has no provider id. Include it once Pi exposes that attribution.
+			if (entry.message.provider === "openrouter") {
+				openRouterSpend.input += usage.cost?.input ?? 0;
+				openRouterSpend.output += usage.cost?.output ?? 0;
+				openRouterSpend.cacheRead += usage.cost?.cacheRead ?? 0;
+				openRouterSpend.cacheWrite += usage.cost?.cacheWrite ?? 0;
+				openRouterSpend.total += usage.cost?.total ?? 0;
+			}
 		}
 	}
 
@@ -237,6 +288,9 @@ function renderOneLineFooter(pi: ExtensionAPI, ctx: ExtensionContext, state: Sta
 	let right = modelPart;
 	if (footerData.getAvailableProviderCount?.() > 1 && model) {
 		right = `${theme.fg("dim", `(${model.provider}) `)}${modelPart}`;
+	}
+	if (model?.provider === "openrouter") {
+		right = `${formatOpenRouterPricing(model, openRouterSpend, theme)}${theme.fg("dim", " • ")}${right}`;
 	}
 	if (statusText) {
 		right = `${right}${theme.fg("dim", " • ")}${statusText}`;
