@@ -62,7 +62,7 @@ Do not run competing work in the same checkout. If another unrelated task, branc
 - `agent/subagents/` — read-only `scout`, `review`, and `librarian` specialist profiles with fixed tool sets and inherited parent models.
 - `agent/extensions/ask-user-question/` — local inspectable `ask_user_question` tool for structured clarifying questions.
 - `agent/extensions/terminal-title.ts` — keeps the terminal title aligned with the Pi session and working directory.
-- `agent/extensions/zed-bell.ts` — terminal bell notification for Zed Terminal Threads when a Pi turn finishes.
+- `agent/extensions/zed-bell.ts` — terminal bell notification for Zed Terminal Threads when Pi needs a structured answer or finishes a turn.
 - `agent/extensions/local-mcp-adapter/` — local MCP proxy extension.
 - `agent/keybindings.json` — small TUI navigation keybindings.
 - `agent/themes/zedokai-pi.json` — custom theme.
