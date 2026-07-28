@@ -62,6 +62,7 @@ Do not suggest `sudo`, `chmod`, `chown`, Full Disk Access, or Pi approval change
 - `agent/extensions/local-mcp-adapter/` is the largest custom integration; keep all local extensions reviewable and dependency-light.
 - `agent/extensions/context.ts` owns both `/context` reporting and subdirectory context injection.
 - `agent/extensions/subagents.ts` owns the local inspectable `subagent` tool and `/subagents` commands.
+- `agent/subagents/` contains the fixed-tool read-only `scout`, `review`, and `librarian` profiles.
 - `agent/extensions/ask-user-question/` owns the local inspectable `ask_user_question` tool.
 - `agent/extensions/terminal-title.ts` owns terminal title updates.
 - `agent/extensions/zed-bell.ts` owns terminal bell notifications for Zed Terminal Threads.

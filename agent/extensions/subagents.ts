@@ -339,7 +339,7 @@ function buildReportPrompt(profile: AgentProfile): string {
 	].join("\n\n");
 }
 
-function buildRunArgs(profile: AgentProfile, params: SubagentRunParams, trusted: boolean): { args: string[]; timeoutMs: number } {
+function buildRunArgs(profile: AgentProfile, params: SubagentRunParams, trusted: boolean, inheritedModel?: string): { args: string[]; timeoutMs: number } {
 	const requestedTimeout = params.timeout_seconds ?? profile.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS;
 	const timeoutSeconds = Number.isFinite(requestedTimeout) ? Math.max(1, requestedTimeout) : DEFAULT_TIMEOUT_SECONDS;
 	const args = [
@@ -355,9 +355,9 @@ function buildRunArgs(profile: AgentProfile, params: SubagentRunParams, trusted:
 
 	if (trusted) args.push("--approve");
 	if (params.no_session ?? profile.noSession) args.push("--no-session");
-	const tools = params.tools ?? profile.tools;
+	const tools = profile.tools ?? params.tools;
 	if (tools) args.push("--tools", tools);
-	const model = params.model ?? profile.model;
+	const model = params.model ?? profile.model ?? inheritedModel;
 	if (model) args.push("--model", model);
 	const thinking = params.thinking ?? profile.thinking;
 	if (thinking) args.push("--thinking", thinking);
@@ -371,7 +371,8 @@ async function runSubagent(params: SubagentRunParams, ctx: ExtensionContext | Ex
 	const requestedProfile = params.agent ?? "general";
 	const profile = agents[requestedProfile];
 	if (!profile) throw new Error(`Unknown subagent profile '${requestedProfile}'. Run /subagents to list available profiles.`);
-	const { args, timeoutMs } = buildRunArgs(profile, params, ctx.isProjectTrusted());
+	const inheritedModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+	const { args, timeoutMs } = buildRunArgs(profile, params, ctx.isProjectTrusted(), inheritedModel);
 	const result = await runPi(args, ctx.cwd, timeoutMs, options);
 	const text = [
 		`subagent: ${profile.name}`,
@@ -459,15 +460,16 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Delegate focused research, review, or implementation work to a separate Pi process.",
 		promptGuidelines: [
 			"Use subagent for independent, bounded work that benefits from a separate context, especially read-only research or review.",
+			"Use the scout profile for fast codebase evidence, the review profile for correctness blockers, and the librarian profile for versioned dependency or API research.",
 			"Prefer multiple read-only subagents for parallel audits, then merge their findings before editing.",
 			"Do not run multiple implementation subagents against the same files unless the user explicitly asks for concurrent edits.",
 			"Do not use subagent for trivial questions or when direct local tools are enough.",
 		],
 		parameters: Type.Object({
-			agent: Type.Optional(Type.String({ description: "Agent profile name. Built-ins: general, research, review, implementation. Add markdown profiles under ~/.pi/agent/subagents/*.md or .pi/subagents/*.md." })),
+			agent: Type.Optional(Type.String({ description: "Agent profile name. Profiles include general, research, review, implementation, scout, and librarian. Add markdown profiles under ~/.pi/agent/subagents/*.md or .pi/subagents/*.md." })),
 			description: Type.String({ description: "Short task title for the subagent." }),
 			prompt: Type.String({ description: "Complete delegated task instructions." }),
-			tools: Type.Optional(Type.String({ description: "Optional comma-separated Pi tools override, for example read,grep,find,ls." })),
+			tools: Type.Optional(Type.String({ description: "Optional comma-separated Pi tools selection for profiles that do not fix their own tools, for example read,grep,find,ls." })),
 			model: Type.Optional(Type.String({ description: "Optional Pi model selector, for example openai/gpt-5.5 or sonnet:high." })),
 			thinking: Type.Optional(Type.String({ description: "Optional thinking level: off, minimal, low, medium, high, xhigh." })),
 			timeout_seconds: Type.Optional(Type.Number({ description: "Timeout review window in seconds. Defaults to profile timeout or 1800. In interactive mode, Pi asks before killing a subagent that exceeds it." })),

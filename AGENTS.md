@@ -28,6 +28,7 @@ This repository tracks the curated, reviewable parts of `~/.pi`.
 - `agent/extensions/aliases.ts` owns `/exit`, `/exti`, `/q`, and `/bye`.
 - `agent/extensions/context.ts` owns `/context` and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
 - `agent/extensions/subagents.ts` owns the local inspectable `subagent` tool and `/subagents` commands.
+- `agent/subagents/` contains the fixed-tool read-only `scout`, `review`, and `librarian` profiles.
 - `agent/extensions/ask-user-question/` owns the local inspectable `ask_user_question` tool.
 - `agent/extensions/terminal-title.ts` owns terminal title updates.
 - `agent/extensions/zed-bell.ts` owns terminal bell notifications for Zed Terminal Threads.

@@ -59,6 +59,7 @@ Do not run competing work in the same checkout. If another unrelated task, branc
 - `agent/extensions/aliases.ts` — `/exit`, `/exti`, `/q`, and `/bye` aliases.
 - `agent/extensions/context.ts` — `/context` report and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
 - `agent/extensions/subagents.ts` — local inspectable `subagent` tool, live progress/token/tool-call updates, timeout confirmation, `/subagents` profile listing, `/subagents doctor`, and `/subagents run <profile> <task>`.
+- `agent/subagents/` — read-only `scout`, `review`, and `librarian` specialist profiles with fixed tool sets and inherited parent models.
 - `agent/extensions/ask-user-question/` — local inspectable `ask_user_question` tool for structured clarifying questions.
 - `agent/extensions/terminal-title.ts` — keeps the terminal title aligned with the Pi session and working directory.
 - `agent/extensions/zed-bell.ts` — terminal bell notification for Zed Terminal Threads when a Pi turn finishes.
