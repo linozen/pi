@@ -96,45 +96,22 @@ function formatTokens(count: number): string {
 	return `${Math.round(count / 1000000)}M`;
 }
 
-type CostBreakdown = {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
-	total: number;
-};
-
 function formatUsd(amount: number): string {
 	return `$${amount.toFixed(amount < 1 ? 4 : 2)}`;
 }
 
 function formatRate(rate: number): string {
-	const value = Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-	return `$${value}/M`;
+	return Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function formatOpenRouterPricing(
 	model: NonNullable<ExtensionContext["model"]>,
-	spend: CostBreakdown,
+	spend: number,
 	theme: any,
 ): string {
-	const spendParts = [
-		spend.input > 0 && `↑${formatUsd(spend.input)}`,
-		spend.output > 0 && `↓${formatUsd(spend.output)}`,
-		spend.cacheRead > 0 && `R${formatUsd(spend.cacheRead)}`,
-		spend.cacheWrite > 0 && `W${formatUsd(spend.cacheWrite)}`,
-	].filter((part): part is string => Boolean(part));
-	const breakdown = spendParts.length ? ` (${spendParts.join(" ")})` : "";
-
-	const rates = [
-		`↑${formatRate(model.cost.input)}`,
-		`↓${formatRate(model.cost.output)}`,
-		model.cost.cacheRead > 0 && `R${formatRate(model.cost.cacheRead)}`,
-		model.cost.cacheWrite > 0 && `W${formatRate(model.cost.cacheWrite)}`,
-	].filter((rate): rate is string => Boolean(rate));
-
-	const rateLabel = model.cost.tiers?.length ? " @ base " : " @ ";
-	return `${theme.fg("accent", `OR ~${formatUsd(spend.total)}`)}${theme.fg("dim", breakdown)}${theme.fg("muted", `${rateLabel}${rates.join(" ")}`)}`;
+	const tierLabel = model.cost.tiers?.length ? "base " : "";
+	const rates = `${tierLabel}↑$${formatRate(model.cost.input)} ↓$${formatRate(model.cost.output)}/M`;
+	return `${theme.fg("accent", `OR ~${formatUsd(spend)}`)}${theme.fg("muted", ` · ${rates}`)}`;
 }
 
 function usedPercent(window: QuotaWindow | undefined): string {
@@ -230,7 +207,7 @@ function renderOneLineFooter(pi: ExtensionAPI, ctx: ExtensionContext, state: Sta
 	const theme = ctx.ui.theme;
 	const model = ctx.model;
 	const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-	const openRouterSpend: CostBreakdown = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+	let openRouterSpend = 0;
 	for (const entry of ctx.sessionManager.getBranch()) {
 		if (entry.type === "message" && entry.message.role === "assistant") {
 			const usage: any = entry.message.usage || {};
@@ -242,11 +219,7 @@ function renderOneLineFooter(pi: ExtensionAPI, ctx: ExtensionContext, state: Sta
 			// shortcut: Attribute only primary assistant usage because nested tool
 			// usage has no provider id. Include it once Pi exposes that attribution.
 			if (entry.message.provider === "openrouter") {
-				openRouterSpend.input += usage.cost?.input ?? 0;
-				openRouterSpend.output += usage.cost?.output ?? 0;
-				openRouterSpend.cacheRead += usage.cost?.cacheRead ?? 0;
-				openRouterSpend.cacheWrite += usage.cost?.cacheWrite ?? 0;
-				openRouterSpend.total += usage.cost?.total ?? 0;
+				openRouterSpend += usage.cost?.total ?? 0;
 			}
 		}
 	}
