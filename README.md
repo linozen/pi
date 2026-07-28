@@ -59,7 +59,7 @@ Do not run competing work in the same checkout. If another unrelated task, branc
 - `agent/extensions/aliases.ts` — `/exit`, `/exti`, `/q`, and `/bye` aliases.
 - `agent/extensions/context.ts` — `/context` report and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
 - `agent/extensions/subagents.ts` — local inspectable `subagent` tool, live progress/token/tool-call updates, timeout confirmation, `/subagents` profile listing, `/subagents doctor`, and `/subagents run <profile> <task>`.
-- `agent/extensions/ask-user-question.ts` — local inspectable `ask_user_question` tool for structured clarifying questions.
+- `agent/extensions/ask-user-question/` — local inspectable `ask_user_question` tool for structured clarifying questions.
 - `agent/extensions/terminal-title.ts` — keeps the terminal title aligned with the Pi session and working directory.
 - `agent/extensions/zed-bell.ts` — terminal bell notification for Zed Terminal Threads when a Pi turn finishes.
 - `agent/extensions/local-mcp-adapter/` — local MCP proxy extension.
@@ -117,6 +117,7 @@ nono run --silent --allow-cwd --profile pi-mistral-local -- \
 ```sh
 git status --short --ignored
 npm --prefix agent/extensions/local-mcp-adapter test
+node --test agent/extensions/ask-user-question/core.test.ts
 PI_OFFLINE=1 pi --no-session --list-models >/dev/null
 ```
 
