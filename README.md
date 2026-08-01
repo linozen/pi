@@ -42,7 +42,7 @@ Use a suitable clean checkout for normal task work. Do not run competing work in
 - `agent/extensions/statusline.ts` — custom one-line footer/statusline and `/chatgpt-limit` usage command.
 - `agent/extensions/aliases.ts` — `/exit`, `/exti`, `/q`, and `/bye` aliases.
 - `agent/extensions/context.ts` — `/context` report and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
-- `agent/extensions/subagents.ts` — local inspectable `subagent` tool, live progress/token/tool-call updates, timeout confirmation, `/subagents` profile listing, `/subagents doctor`, and `/subagents run <profile> <task>`.
+- `agent/extensions/subagents.ts` — local inspectable background `subagent` jobs with `subagent_result` collection/cancellation, Ctrl+O-aware compact rendering, compact ephemeral child runs, bounded parallel execution, latency metrics, timeout confirmation, `/subagents` profile/job listing, `/subagents doctor`, and blocking `/subagents run <profile> <task>`.
 - `agent/subagents/` — read-only `scout`, `review`, and `librarian` specialist profiles with fixed tool sets and inherited parent models.
 - `agent/extensions/ask-user-question/` — local inspectable `ask_user_question` tool for structured clarifying questions.
 - `agent/extensions/terminal-title.ts` — keeps the terminal title aligned with the Pi session and working directory.

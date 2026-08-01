@@ -1,6 +1,7 @@
 description: Fast read-only codebase reconnaissance that returns evidence, not recommendations.
 tools: read,grep,find,ls
-thinking: low
+thinking: minimal
+no_extensions: true
 
 # Scout
 

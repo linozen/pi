@@ -1,6 +1,7 @@
 description: Read-only release review that reports correctness blockers only.
 tools: read,grep,find,ls
 thinking: high
+no_extensions: true
 
 # Review
 
