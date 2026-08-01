@@ -48,7 +48,7 @@ Do not suggest `sudo`, `chmod`, `chown`, Full Disk Access, or Pi approval change
 - Make small conventional commits when asked to commit.
 - Treat repo-local `.plans/*.md` files as temporary Plannotator working files. Keep at most one active plan per checkout, keep it aligned with the current task, and delete it before final cleanup commits unless the user asks to keep it. Plannotator tools can always be used to get structured feedback from a human operator, and Plannotator snapshots plan history under `~/.plannotator`.
 - Do not multiplex competing work in one checkout. If a second unrelated task, branch, or plan starts before the current one is cleaned up, create or switch to a separate `git worktree` for that work.
-- Linear task branches use `feature/<lowercase-id>` (for example `feature/eng-123`). In multi-repo workspaces, keep canonical repo checkouts clean and put task edits under `.worktrees/<lowercase-id>/<repo-relative-path>`.
+- awork task branches use `feature/<lowercase-id>` (for example `feature/key-123`). Reuse a suitable clean checkout by default; use `.worktrees/<lowercase-id>/<repo-relative-path>` only for competing work or multi-repo workspaces whose canonical checkouts must remain clean.
 - Leave one runnable verification for non-trivial logic.
 
 ## This `~/.pi` config
@@ -57,8 +57,8 @@ Do not suggest `sudo`, `chmod`, `chown`, Full Disk Access, or Pi approval change
 - Keep `agent/auth.json`, `agent/tavily.env`, `agent/mcp-oauth.json`, `agent/sessions/`, caches, crash logs, and `node_modules` out of git.
 - `agent/settings.json` is the main package/model/theme entry point.
 - `agent/plannotator.json` customizes Plannotator phase labels.
-- `agent/prompts/linear-plannotator.md` is the low-code Linear planning flow.
-- `agent/extensions/linear-plannotator.ts` owns `/linear-pull`, `/linear-implement`, `/linear-sync`, `/plan`, and `/plan-status`.
+- `agent/skills/awork-task/SKILL.md` owns exact awork task resolution, reviewed planning, implementation rules, and recoverable finalization.
+- `agent/extensions/awork-plannotator.ts` owns only `/awork <TASK-ID>`; native Plannotator owns `/plannotator` and post-approval continuation.
 - `agent/extensions/local-mcp-adapter/` is the largest custom integration; keep all local extensions reviewable and dependency-light.
 - `agent/extensions/context.ts` owns both `/context` reporting and subdirectory context injection.
 - `agent/extensions/subagents.ts` owns the local inspectable `subagent` tool and `/subagents` commands.

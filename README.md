@@ -10,42 +10,26 @@ Use the default OpenAI/ChatGPT subscription launcher for normal work:
 n-pi
 ```
 
-For non-trivial changes, use Plannotator as the planning gate:
+For awork-backed changes, use the single kickoff command:
+
+```text
+/awork KEY-123
+```
+
+It waits for Pi to become idle, activates Plannotator planning mode, resolves the exact awork task, and submits a repository-aware plan. After approval, native Plannotator continuation runs implementation and the final awork sync; there is no separate implement or sync command.
+
+For direct skill use, run these as two sequential commands:
 
 ```text
 /plannotator
+/skill:awork-task KEY-123
 ```
 
-or the local shortcut/alias surface:
+For non-awork work, use native `/plannotator` and ask directly for a reviewed plan. The Plannotator tools can always be used to get structured feedback from a human operator.
 
-```text
-/plan
-Ctrl+Super+P
-```
+Plan markdown files created during this loop are temporary repo-local working files. Use `.plans/*.md` for the current task only, keep at most one active plan per checkout, and keep it aligned with that task. awork plans retain a generated sync ID until the outcome comment and approved status transition have both been verified. Delete plan files only after successful finalization unless a plan is intentionally being preserved. Plannotator keeps review snapshots under `~/.plannotator`.
 
-For Linear-backed work, use the local command wrapper:
-
-```text
-/linear-pull ENG-123
-```
-
-After the plan is approved, compact the planning context and begin implementation:
-
-```text
-/linear-implement ENG-123
-```
-
-After implementation, sync the outcome back to Linear:
-
-```text
-/linear-sync ENG-123
-```
-
-For non-Linear work, skip Linear and ask directly for a Plannotator-reviewed plan. The Plannotator tools can always be used to get structured feedback from a human operator.
-
-Plan markdown files created during this loop are temporary repo-local working files. Use `.plans/*.md` for the current task only, keep at most one active plan per checkout, and keep it aligned with that task. Delete plan files before the final cleanup commit unless a plan is intentionally being preserved. Plannotator keeps review snapshots under `~/.plannotator`.
-
-Do not run competing work in the same checkout. If another unrelated task, branch, or plan needs to proceed before the current one is cleaned up, create or switch to a separate `git worktree` for that work.
+Use a suitable clean checkout for normal task work. Do not run competing work in the same checkout: create or switch to a separate `git worktree` when another task must proceed concurrently or a multi-repo workspace must keep canonical checkouts clean.
 
 ## Retained components
 
@@ -53,8 +37,8 @@ Do not run competing work in the same checkout. If another unrelated task, branc
 - `agent/models.json` — non-secret Azure/IPTAS model descriptor for the optional Azure launcher.
 - `agent/mcp.json` — local MCP server definitions using environment placeholders for credentials.
 - `agent/plannotator.json` — short Plannotator phase labels.
-- `agent/prompts/linear-plannotator.md` — prompt-template fallback for Linear issue planning.
-- `agent/extensions/linear-plannotator.ts` — command surface for `/plan`, `/plan-status`, `/linear-pull`, `/linear-implement`, `/linear-sync`, and `Ctrl+Super+P`; the installed Plannotator package owns `/plannotator`.
+- `agent/skills/awork-task/SKILL.md` — awork task resolution, reviewed planning, implementation, and recoverable finalization workflow.
+- `agent/extensions/awork-plannotator.ts` — stateless `/awork <TASK-ID>` kickoff; the installed Plannotator package owns `/plannotator` and approval continuation.
 - `agent/extensions/statusline.ts` — custom one-line footer/statusline and `/chatgpt-limit` usage command.
 - `agent/extensions/aliases.ts` — `/exit`, `/exti`, `/q`, and `/bye` aliases.
 - `agent/extensions/context.ts` — `/context` report and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
@@ -67,8 +51,6 @@ Do not run competing work in the same checkout. If another unrelated task, branc
 - `agent/keybindings.json` — small TUI navigation keybindings.
 - `agent/themes/zedokai-pi.json` — custom theme.
 - `agent/skills/` — local opt-in skills.
-
-Cleanup should keep this command surface intact unless the replacement workflow is explicitly approved.
 
 ## Launchers and credentials
 
@@ -127,8 +109,9 @@ In Pi:
 ```text
 /reload
 /hotkeys
-/plan-status
 /plannotator
+/awork KEY-123
+/skill:awork-task KEY-123
 /chatgpt-limit
 /context
 /subagents
@@ -136,12 +119,9 @@ In Pi:
 /refresh-mcp
 ```
 
-For Linear and MCP:
+For awork MCP:
 
 ```text
-/linear-pull ENG-123
-/linear-implement ENG-123
-/linear-sync ENG-123
 mcp({ "action": "status" })
-mcp({ "action": "search", "query": "linear" })
+mcp({ "action": "list", "server": "awork" })
 ```

@@ -22,8 +22,8 @@ This repository tracks the curated, reviewable parts of `~/.pi`.
 
 - `agent/settings.json` is the package/model/theme entry point.
 - `agent/plannotator.json` customizes Plannotator phase labels.
-- `agent/prompts/linear-plannotator.md` is the low-code Linear planning flow.
-- `agent/extensions/linear-plannotator.ts` owns the local planning/Linear command surface, including `/linear-pull`, `/linear-implement`, and `/linear-sync`, and should stay intact unless an explicit replacement workflow is approved.
+- `agent/skills/awork-task/SKILL.md` owns the awork task lifecycle after kickoff: resolution, reviewed planning, implementation rules, and recoverable finalization.
+- `agent/extensions/awork-plannotator.ts` owns only the stateless `/awork <TASK-ID>` kickoff; the installed Plannotator package owns `/plannotator` and approval continuation.
 - `agent/extensions/statusline.ts` owns the custom footer and `/chatgpt-limit` command.
 - `agent/extensions/aliases.ts` owns `/exit`, `/exti`, `/q`, and `/bye`.
 - `agent/extensions/context.ts` owns `/context` and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
