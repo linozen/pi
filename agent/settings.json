@@ -2,7 +2,7 @@
   "quietStartup": true,
   "collapseChangelog": true,
   "enableInstallTelemetry": false,
-  "lastChangelogVersion": "0.79.6",
+  "lastChangelogVersion": "0.83.0",
   "autocompleteMaxVisible": 15,
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.6-sol",
