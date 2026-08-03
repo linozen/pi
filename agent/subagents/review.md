@@ -1,5 +1,6 @@
 description: Read-only release review that reports correctness blockers only.
 tools: read,grep,find,ls
+model: openai-codex/gpt-5.6-terra
 thinking: high
 no_extensions: true
 

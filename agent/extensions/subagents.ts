@@ -14,17 +14,20 @@ const DEFAULT_TIMEOUT_SECONDS = 1800;
 const PROGRESS_INTERVAL_MS = 15_000;
 const MAX_ACTIVE_JOBS = 8;
 const MAX_RETAINED_JOBS = 32;
+const DEFAULT_SUBAGENT_MODEL = "openai-codex/gpt-5.6-luna";
 
 const BUILTIN_AGENTS: Record<string, AgentProfile> = {
 	general: {
 		name: "general",
 		description: "General-purpose subagent with the normal Pi toolset.",
+		thinking: "medium",
 		instructions: "You are a focused subagent. Complete the delegated task independently, then return a concise report with findings, changed files, verification, and open risks.",
 	},
 	research: {
 		name: "research",
 		description: "Read-only research subagent for codebase exploration and fact-finding.",
 		tools: "read,grep,find,ls",
+		thinking: "minimal",
 		disableExtensions: true,
 		instructions: "You are a read-only research subagent. Do not modify files. Return concrete findings with file paths and line references where possible.",
 	},
@@ -32,12 +35,14 @@ const BUILTIN_AGENTS: Record<string, AgentProfile> = {
 		name: "review",
 		description: "Read-only review subagent for bugs, regressions, and simplification opportunities.",
 		tools: "read,grep,find,ls",
+		thinking: "high",
 		disableExtensions: true,
 		instructions: "You are a read-only code review subagent. Do not modify files. Rank findings by impact and include exact file paths.",
 	},
 	implementation: {
 		name: "implementation",
 		description: "Implementation subagent with the normal Pi toolset.",
+		thinking: "medium",
 		instructions: "You are an implementation subagent. Make the smallest correct change, avoid new dependencies, and leave one runnable verification command in your final report.",
 	},
 };
@@ -408,7 +413,7 @@ function buildReportPrompt(profile: AgentProfile): string {
 	].join("\n\n");
 }
 
-function buildRunArgs(profile: AgentProfile, params: SubagentRunParams, trusted: boolean, inheritedModel?: string): { args: string[]; timeoutMs: number } {
+function buildRunArgs(profile: AgentProfile, params: SubagentRunParams, trusted: boolean): { args: string[]; timeoutMs: number } {
 	const requestedTimeout = params.timeout_seconds ?? profile.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS;
 	const timeoutSeconds = Number.isFinite(requestedTimeout) ? Math.max(1, requestedTimeout) : DEFAULT_TIMEOUT_SECONDS;
 	const args = [
@@ -431,7 +436,7 @@ function buildRunArgs(profile: AgentProfile, params: SubagentRunParams, trusted:
 	if (profile.disableExtensions) args.push("--no-extensions");
 	const tools = profile.tools ?? params.tools;
 	if (tools) args.push("--tools", tools);
-	const model = params.model ?? profile.model ?? inheritedModel;
+	const model = params.model ?? profile.model ?? DEFAULT_SUBAGENT_MODEL;
 	if (model) args.push("--model", model);
 	const requestedModelSetsThinking = params.model ? /:(?:off|minimal|low|medium|high|xhigh|max)$/.test(params.model) : false;
 	const thinking = params.thinking ?? (requestedModelSetsThinking ? undefined : profile.thinking);
@@ -446,8 +451,7 @@ function prepareSubagent(params: SubagentRunParams, ctx: ExtensionContext | Exte
 	const requestedProfile = params.agent ?? "general";
 	const profile = agents[requestedProfile];
 	if (!profile) throw new Error(`Unknown subagent profile '${requestedProfile}'. Run /subagents to list available profiles.`);
-	const inheritedModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
-	const { args, timeoutMs } = buildRunArgs(profile, params, ctx.isProjectTrusted(), inheritedModel);
+	const { args, timeoutMs } = buildRunArgs(profile, params, ctx.isProjectTrusted());
 	return { profile, args, timeoutMs };
 }
 
@@ -470,7 +474,7 @@ async function runSubagent(params: SubagentRunParams, ctx: ExtensionContext | Ex
 function formatAgentLine(agent: AgentProfile): string {
 	const defaults = [
 		agent.tools ? `tools: ${agent.tools}` : undefined,
-		agent.model ? `model: ${agent.model}` : undefined,
+		`model: ${agent.model ?? DEFAULT_SUBAGENT_MODEL}`,
 		agent.thinking ? `thinking: ${agent.thinking}` : undefined,
 		agent.timeoutSeconds ? `timeout: ${agent.timeoutSeconds}s` : undefined,
 		agent.disableExtensions ? "no-extensions" : undefined,
