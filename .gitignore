@@ -14,6 +14,7 @@ agent/**/*.env
 # Session transcripts and local runtime state
 agent/sessions/
 agent/pi-crash.log
+agent/crashes.json
 agent/mcp-metadata-cache.json
 agent/models-store.json
 agent/trust.json
