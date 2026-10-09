@@ -5,6 +5,7 @@
 agent/auth.json
 agent/tavily.env
 agent/mcp-oauth.json
+agent/mcp-auth.json
 agent/**/*.env
 .env*
 *.pem

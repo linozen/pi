@@ -54,12 +54,12 @@ Do not suggest `sudo`, `chmod`, `chown`, Full Disk Access, or Pi approval change
 ## This `~/.pi` config
 
 - This repo tracks curated Pi config, not runtime state.
-- Keep `agent/auth.json`, `agent/tavily.env`, `agent/mcp-oauth.json`, `agent/sessions/`, caches, crash logs, and `node_modules` out of git.
+- Keep `agent/auth.json`, `agent/tavily.env`, `agent/mcp-auth.json`, `agent/mcp-oauth.json`, `agent/sessions/`, caches, crash logs, and `node_modules` out of git.
 - `agent/settings.json` is the main package/model/theme entry point.
 - `agent/plannotator.json` customizes Plannotator phase labels.
 - `agent/skills/awork-task/SKILL.md` owns exact awork task resolution, reviewed planning, implementation rules, and recoverable finalization.
 - `agent/extensions/awork-plannotator.ts` owns only `/awork <TASK-ID>`; native Plannotator owns `/plannotator` and post-approval continuation.
-- `agent/extensions/local-mcp-adapter/` is the largest custom integration; keep all local extensions reviewable and dependency-light.
+- `agent/mcp.json` defines native Pi MCP servers; use `/mcp` for session status and sign-in.
 - `agent/extensions/context.ts` owns both `/context` reporting and subdirectory context injection.
 - `agent/extensions/subagents.ts` owns the local inspectable `subagent` tool and `/subagents` commands.
 - `agent/subagents/` contains the fixed-tool read-only `scout`, `review`, and `librarian` profiles.

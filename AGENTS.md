@@ -32,4 +32,4 @@ This repository tracks the curated, reviewable parts of `~/.pi`.
 - `agent/extensions/ask-user-question/` owns the local inspectable `ask_user_question` tool.
 - `agent/extensions/terminal-title.ts` owns terminal title updates.
 - `agent/extensions/zed-bell.ts` owns terminal bell notifications for Zed Terminal Threads.
-- `agent/extensions/local-mcp-adapter/` owns the local MCP proxy integration.
+- `agent/mcp.json` configures native Pi MCP servers; OAuth credentials live in ignored `agent/mcp-auth.json`.

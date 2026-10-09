@@ -9,15 +9,18 @@
         "--slim",
         "--no-usage-statistics",
         "--no-performance-crux"
-      ],
-      "lifecycle": "keep-alive"
+      ]
     },
-    "tableplus": {
+    "zotero": {
       "type": "http",
-      "url": "http://127.0.0.1:51003/mcp",
+      "url": "http://127.0.0.1:47837/mcp",
       "headers": {
-        "Authorization": "Bearer ${TABLEPLUS_MCP_TOKEN}"
+        "Connection": "close"
       }
+    },
+    "grafana": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
     }
   }
 }

@@ -35,7 +35,7 @@ Use a suitable clean checkout for normal task work. Do not run competing work in
 
 - `agent/settings.json` — Pi package/model/theme entry point.
 - `agent/models.json` — non-secret Azure/IPTAS model descriptor for the optional Azure launcher.
-- `agent/mcp.json` — local MCP server definitions using environment placeholders for credentials.
+- `agent/mcp.json` — native Pi MCP server definitions using environment placeholders for credentials.
 - `agent/plannotator.json` — short Plannotator phase labels.
 - `agent/skills/awork-task/SKILL.md` — awork task resolution, reviewed planning, implementation, and recoverable finalization workflow.
 - `agent/extensions/awork-plannotator.ts` — stateless `/awork <TASK-ID>` kickoff; the installed Plannotator package owns `/plannotator` and approval continuation.
@@ -47,7 +47,6 @@ Use a suitable clean checkout for normal task work. Do not run competing work in
 - `agent/extensions/ask-user-question/` — local inspectable `ask_user_question` tool for structured clarifying questions.
 - `agent/extensions/terminal-title.ts` — keeps the terminal title aligned with the Pi session and working directory.
 - `agent/extensions/zed-bell.ts` — terminal bell notification for Zed Terminal Threads when Pi needs a structured answer or finishes a turn.
-- `agent/extensions/local-mcp-adapter/` — local MCP proxy extension.
 - `agent/keybindings.json` — small TUI navigation keybindings.
 - `agent/themes/zedokai-pi.json` — custom theme.
 - `agent/skills/` — local opt-in skills.
@@ -99,7 +98,7 @@ nono run --silent --allow-cwd --profile pi-mistral-local -- \
 
 ```sh
 git status --short --ignored
-npm --prefix agent/extensions/local-mcp-adapter test
+pi mcp list
 node --test agent/extensions/ask-user-question/core.test.ts
 PI_OFFLINE=1 pi --no-session --list-models >/dev/null
 ```
@@ -116,12 +115,7 @@ In Pi:
 /context
 /subagents
 /subagents doctor
-/refresh-mcp
+/mcp
 ```
 
-For awork MCP:
-
-```text
-mcp({ "action": "status" })
-mcp({ "action": "list", "server": "awork" })
-```
+Native MCP reads `agent/mcp.json` globally and trusted project `.pi/mcp.json` files. It does not read `.mcp.json`. Use `/mcp` to inspect servers and `/mcp login <server>` to authorize any OAuth servers. Native credentials are stored in ignored `agent/mcp-auth.json`; old adapter credentials do not transfer. After editing MCP config, run `/reload` or restart Pi, then `pi mcp list` to check connectivity. Local servers must be running to connect.
