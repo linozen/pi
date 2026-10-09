@@ -61,7 +61,7 @@ Do not suggest `sudo`, `chmod`, `chown`, Full Disk Access, or Pi approval change
 - `agent/extensions/awork-plannotator.ts` owns only `/awork <TASK-ID>`; native Plannotator owns `/plannotator` and post-approval continuation.
 - `agent/mcp.json` defines native Pi MCP servers; use `/mcp` for session status and sign-in.
 - `agent/extensions/context.ts` owns both `/context` reporting and subdirectory context injection.
-- `agent/extensions/subagents.ts` owns the local inspectable `subagent` tool and `/subagents` commands.
+- `agent/extensions/subagents/` owns the local inspectable `subagent` tool, `/subagents` commands, the ctrl+shift+j live jobs view, and parent-decided timeout windows (`core.ts` is the tested pure logic).
 - `agent/subagents/` contains the fixed-tool read-only `scout`, `review`, and `librarian` profiles.
 - `agent/extensions/ask-user-question/` owns the local inspectable `ask_user_question` tool.
 - `agent/extensions/terminal-title.ts` owns terminal title updates.

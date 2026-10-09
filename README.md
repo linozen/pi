@@ -42,7 +42,7 @@ Use a suitable clean checkout for normal task work. Do not run competing work in
 - `agent/extensions/statusline.ts` — custom one-line footer/statusline and `/chatgpt-limit` usage command.
 - `agent/extensions/aliases.ts` — `/exit`, `/exti`, `/q`, and `/bye` aliases.
 - `agent/extensions/context.ts` — `/context` report and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
-- `agent/extensions/subagents.ts` — local inspectable background `subagent` jobs with `subagent_result` collection/cancellation, Ctrl+O-aware compact rendering, compact ephemeral child runs, bounded parallel execution, latency metrics, timeout confirmation, `/subagents` profile/job listing, `/subagents doctor`, and blocking `/subagents run <profile> <task>`.
+- `agent/extensions/subagents/` — local inspectable background `subagent` jobs with `subagent_result` collection/extension/cancellation, Ctrl+O-aware compact rendering, compact ephemeral child runs, bounded parallel execution, latency metrics, failure reasons, parent-decided timeout windows (expiry notifies the parent instead of killing; hard ceiling `max(1800s, 3x window)`), a ctrl+shift+j live jobs view (`/subagents view`), `/subagents` profile/job listing, `/subagents doctor`, and blocking `/subagents run <profile> <task>`. `core.ts` holds the tested pure logic.
 - `agent/subagents/` — read-only `scout`, `review`, and `librarian` specialist profiles with fixed tool sets and inherited parent models.
 - `agent/extensions/ask-user-question/` — local inspectable `ask_user_question` tool for structured clarifying questions.
 - `agent/extensions/terminal-title.ts` — keeps the terminal title aligned with the Pi session and working directory.
@@ -100,6 +100,7 @@ nono run --silent --allow-cwd --profile pi-mistral-local -- \
 git status --short --ignored
 pi mcp list
 node --test agent/extensions/ask-user-question/core.test.ts
+node --test agent/extensions/subagents/core.test.ts
 PI_OFFLINE=1 pi --no-session --list-models >/dev/null
 ```
 
@@ -115,6 +116,7 @@ In Pi:
 /context
 /subagents
 /subagents doctor
+/subagents view (or ctrl+shift+j)
 /mcp
 ```
 

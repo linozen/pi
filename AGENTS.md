@@ -27,7 +27,7 @@ This repository tracks the curated, reviewable parts of `~/.pi`.
 - `agent/extensions/statusline.ts` owns the custom footer and `/chatgpt-limit` command.
 - `agent/extensions/aliases.ts` owns `/exit`, `/exti`, `/q`, and `/bye`.
 - `agent/extensions/context.ts` owns `/context` and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
-- `agent/extensions/subagents.ts` owns the local inspectable `subagent` tool and `/subagents` commands.
+- `agent/extensions/subagents/` owns the local inspectable `subagent` tool, `/subagents` commands, the ctrl+shift+j live jobs view, and parent-decided timeout windows (`core.ts` is the tested pure logic).
 - `agent/subagents/` contains the fixed-tool read-only `scout`, `review`, and `librarian` profiles.
 - `agent/extensions/ask-user-question/` owns the local inspectable `ask_user_question` tool.
 - `agent/extensions/terminal-title.ts` owns terminal title updates.

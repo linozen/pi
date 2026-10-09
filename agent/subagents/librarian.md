@@ -1,6 +1,7 @@
 description: Read-only dependency and API research grounded in installed versions and official sources.
 tools: read,grep,find,ls,web_search,web_fetch
 thinking: medium
+timeout_seconds: 300
 
 # Librarian
 
