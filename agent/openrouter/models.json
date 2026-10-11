@@ -1,0 +1,7 @@
+{
+  "providers": {
+    "openrouter": {
+      "baseUrl": "http://127.0.0.1:17778/openrouter"
+    }
+  }
+}

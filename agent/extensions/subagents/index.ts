@@ -709,6 +709,7 @@ export default function (pi: ExtensionAPI) {
 		executionMode: "parallel",
 		promptSnippet: "Start a bounded background subagent only when separate context materially helps.",
 		promptGuidelines: [
+			"For a multi-part task with an independent evidence-gathering or review lane, consider starting one read-only subagent while you continue the main work.",
 			"Prefer direct inspection and verification; do not use subagent for work the parent can complete with a few local tool calls.",
 			"Use the scout profile for fast codebase evidence, the review profile only for an independent correctness check, and the librarian profile for versioned dependency or API research.",
 			"At most two review subagents are permitted per user request. Never ask a reviewer to review fixes made in response to an earlier review; run targeted verification instead.",

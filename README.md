@@ -10,35 +10,29 @@ Use the default OpenAI/ChatGPT subscription launcher for normal work:
 n-pi
 ```
 
-For awork-backed changes, use the single kickoff command:
+For awork-backed changes in the iptas workspace, use the single kickoff command:
 
 ```text
 /awork KEY-123
 ```
 
-It waits for Pi to become idle, activates Plannotator planning mode, resolves the exact awork task, and submits a repository-aware plan. After approval, native Plannotator continuation runs implementation and the final awork sync; there is no separate implement or sync command.
+The repository-local command waits for Pi to become idle and starts the awork skill. The skill resolves the exact task, writes `.plans/KEY-123.md`, and prints that path for review in Zed. Reply `approved` to continue implementation and final awork sync in the same conversation; there is no separate implement or sync command.
 
-For direct skill use, run these as two sequential commands:
+For direct skill use:
 
 ```text
-/plannotator
 /skill:awork-task KEY-123
 ```
 
-For non-awork work, use native `/plannotator` and ask directly for a reviewed plan. The Plannotator tools can always be used to get structured feedback from a human operator.
+Plan markdown files are temporary repo-local Zed review files. Use `.plans/*.md` for the current task only, keep at most one active plan per checkout, and keep it aligned with that task. awork plans retain a generated sync ID until the outcome comment and approved status transition have both been verified. Delete plan files only after successful finalization unless a plan is intentionally being preserved.
 
-Plan markdown files created during this loop are temporary repo-local working files. Use `.plans/*.md` for the current task only, keep at most one active plan per checkout, and keep it aligned with that task. awork plans retain a generated sync ID until the outcome comment and approved status transition have both been verified. Delete plan files only after successful finalization unless a plan is intentionally being preserved. Plannotator keeps review snapshots under `~/.plannotator`.
-
-Use a suitable clean checkout for normal task work. Do not run competing work in the same checkout: create or switch to a separate `git worktree` when another task must proceed concurrently or a multi-repo workspace must keep canonical checkouts clean.
+Use a suitable clean checkout for normal task work. Do not run competing work in the same checkout: create or switch to a separate `git worktree` when another task must proceed concurrently.
 
 ## Retained components
 
 - `agent/settings.json` — Pi package/model/theme entry point.
-- `agent/models.json` — non-secret Azure/IPTAS model descriptor for the optional Azure launcher.
+- `agent/mistral/models.json` and `agent/openrouter/models.json` — non-secret provider endpoint descriptors for the optional launchers.
 - `agent/mcp.json` — native Pi MCP server definitions using environment placeholders for credentials.
-- `agent/plannotator.json` — short Plannotator phase labels.
-- `agent/skills/awork-task/SKILL.md` — awork task resolution, reviewed planning, implementation, and recoverable finalization workflow.
-- `agent/extensions/awork-plannotator.ts` — stateless `/awork <TASK-ID>` kickoff; the installed Plannotator package owns `/plannotator` and approval continuation.
 - `agent/extensions/statusline.ts` — custom one-line footer/statusline and `/chatgpt-limit` usage command.
 - `agent/extensions/aliases.ts` — `/exit`, `/exti`, `/q`, and `/bye` aliases.
 - `agent/extensions/context.ts` — `/context` report and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
@@ -58,6 +52,19 @@ The default launcher is `n-pi`, equivalent to `n-pi-openai`:
 - Uses nono profile `pi-base-local`.
 - Reads `~/.pi/agent/auth.json` for ChatGPT/OpenAI Codex subscription OAuth.
 - Does not inject Azure or Mistral API-key variables.
+- All launchers set `NONO_LOG_FILE` to `~/.local/state/nono/logs/pi-<provider>-<yyyymmdd>.log`
+  (defined in the linozen workspace at `31.00_infra/mbp/home.nix`, `programs.zsh.initExtra`; apply with
+  `31.00_infra/mbp/bootstrap.sh switch`, which builds the same nix-darwin flake). nono's proxy keeps only the first 4096 network
+  audit events per session and then warns once per dropped event on stderr; those WARN lines corrupt
+  TUI display in herdr threads. `NONO_LOG_FILE` routes nono/proxy tracing logs to the file instead of
+  the terminal while keeping banners, summaries, and diagnostics footers on the terminal. The audit
+  trail stays enabled; `--no-audit` would remove the warnings too but disables the per-session audit
+  trail. Verify after relaunching:
+
+```sh
+ls -la ~/.local/state/nono/logs/
+grep -c "Network audit buffer full" ~/.local/state/nono/logs/pi-*.log
+```
 
 Optional provider launchers remain escape hatches:
 
@@ -65,6 +72,44 @@ Optional provider launchers remain escape hatches:
 - `n-pi-mistral` — profile `pi-mistral-local`, injects only `MISTRAL_API_KEY`, denies `auth.json`, starts Mistral.
 
 Secrets live outside git in OAuth files or 1Password-backed nono `env_credentials`.
+
+## smolvm VM lane (`n-vibe`)
+
+`n-vibe` runs the Mistral Vibe CLI inside an ephemeral smolvm microVM with the current
+directory mounted at `/workspace`. It works both from a plain terminal and from inside
+nono-sandboxed Pi sessions; the same rules apply to any agent-driven `smolvm` call:
+
+- **Redirect HOME** to a writable tree (`HOME="$HOME/.cache/smolvm-home"`, created by the
+  launcher). smolvm keeps its SQLite state DB under `~/Library/Application Support/smolvm/server/`
+  regardless of `SMOLVM_DATA_DIR`, which only relocates some data paths. `~/Library` and
+  `~/.local/state` are denied under nono; the profile denies reads on existing `~/Library`
+  entries, which blinds smolvm's `exists()` check, so it calls `create_dir` on the real
+  (existing) dir and dies with `File exists (os error 17)` — the DEV-134 failure. `~/.cache`
+  is writable and survives reboots.
+- **Unset proxy variables** (`env -u HTTP_PROXY ...`) before invoking smolvm. nono's audit
+  proxy binds host loopback only; smolvm refuses to pass a loopback proxy into a machine
+  (guest loopback is not host loopback) and aborts at config validation otherwise.
+- **The session's nono invocation must carry an IPC port allowance** (`--open-port`). Under
+  nono's default proxy-only macOS seatbelt template, `machine start`/`machine run` die at
+  `krun_start_enter` with `-22 (EINVAL)` (libkrun rejects the VM device setup); any
+  `--open-port` flips seatbelt generation into the proxy+IPC template, under which VMs boot.
+  All three launchers carry this: `n-pi-openai` → `--open-port 17776`, `n-pi-mistral` →
+  `--open-port 17777`, `n-pi-openrouter` → `--open-port 17778`. The port is a seatbelt
+  allowance only — nothing binds it, and the audit proxy keeps a random per-session
+  port, so concurrent same-launcher sessions do not collide.
+  Bisected empirically (DEV-134): no flags FAIL, `--proxy-port` alone FAIL, `--open-port`
+  alone PASS, profile choice irrelevant.
+- **Guest egress is not nono-audited.** Direct TCP from sandboxed processes is allowed (nono's
+  network enforcement is proxy-cooperative), so VM traffic bypasses the audit proxy. Use
+  smolvm's `--allow-host-pattern` (DNS-level, CDN-safe) as the compensating egress filter;
+  `n-vibe` restricts the guest to `api.mistral.ai`, `pypi.org`, and `files.pythonhosted.org`.
+- Verified in-sandbox: ephemeral run (alpine, ~230 ms boot, registry pull), persistent
+  `machine create/start/exec/stop/delete` with data surviving stop→start, all with HOME
+  redirected and proxies unset.
+
+If fully audited VM egress is ever required, the nono-side option is binding the audit proxy
+on a non-loopback interface so smolvm's `--use-host-proxy` rewrite can reach it — a
+boundary decision for the nono owner, not a Pi-session change.
 
 ## nono profiles
 
@@ -104,12 +149,10 @@ node --test agent/extensions/subagents/core.test.ts
 PI_OFFLINE=1 pi --no-session --list-models >/dev/null
 ```
 
-In Pi:
+In Pi from the iptas workspace:
 
 ```text
 /reload
-/hotkeys
-/plannotator
 /awork KEY-123
 /skill:awork-task KEY-123
 /chatgpt-limit
