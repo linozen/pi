@@ -5,6 +5,7 @@
 agent/auth.json
 agent/mistral/auth.json
 agent/openrouter/auth.json
+agent/aperture/auth.json
 agent/tavily.env
 agent/mcp-oauth.json
 agent/mcp-auth.json
@@ -14,24 +15,28 @@ agent/**/*.env
 *.key
 
 # Session transcripts and local runtime state
-agent/sessions/
-agent/mistral/sessions/
-agent/openrouter/sessions/
-agent/pi-crash.log
+agent/**/sessions/
+agent/**/history*
+agent/**/*.log
 agent/crashes.json
 agent/mcp-metadata-cache.json
 agent/models-store.json
 agent/mistral/models-store.json
 agent/openrouter/models-store.json
+agent/aperture/models-store.json
 agent/trust.json
 agent/mistral/trust.json
 agent/openrouter/trust.json
+agent/aperture/trust.json
+agent/aperture/pi-crash.log
+agent/aperture/crashes.json
 .rpiv/
 
 # Dependencies / generated package installs
 agent/npm/node_modules/
 agent/mistral/npm/
 agent/openrouter/npm/
+agent/aperture/npm/
 agent/extensions/**/node_modules/
 
 # Local caches

@@ -73,19 +73,29 @@ Optional provider launchers remain escape hatches:
 
 Secrets live outside git in OAuth files or 1Password-backed nono `env_credentials`.
 
+## Security assessments
+
+Use the private Strix runner on Fly.io. Setup, secrets, scope, and lifecycle
+instructions are in
+`/Users/lino/Documents/30-39_Code/31_linozen.com/31.01_sites/strix/README.md`.
+
+After changing the Aperture launcher, validate its Nix source with
+`nix-instantiate --parse mbp/home.nix >/dev/null` from the infrastructure
+checkout. Apply the reviewed configuration separately with `nix-config-switch`;
+that switch also applies other pending configuration changes.
+
 ## smolvm VM lane (`n-vibe`)
 
 `n-vibe` runs the Mistral Vibe CLI inside an ephemeral smolvm microVM with the current
 directory mounted at `/workspace`. It works both from a plain terminal and from inside
 nono-sandboxed Pi sessions; the same rules apply to any agent-driven `smolvm` call:
 
-- **Redirect HOME** to a writable tree (`HOME="$HOME/.cache/smolvm-home"`, created by the
-  launcher). smolvm keeps its SQLite state DB under `~/Library/Application Support/smolvm/server/`
-  regardless of `SMOLVM_DATA_DIR`, which only relocates some data paths. `~/Library` and
-  `~/.local/state` are denied under nono; the profile denies reads on existing `~/Library`
-  entries, which blinds smolvm's `exists()` check, so it calls `create_dir` on the real
-  (existing) dir and dies with `File exists (os error 17)` — the DEV-134 failure. `~/.cache`
-  is writable and survives reboots.
+- **Keep the normal HOME.** smolvm stores machine state under
+  `~/Library/Application Support/smolvm/` and caches under `~/Library/Caches/smolvm/`.
+  The current Pi/nono profile permits those paths; an offline ephemeral VM booted with
+  the normal HOME in-sandbox. The earlier DEV-134 workaround of redirecting HOME to
+  `~/.cache/smolvm-home` is no longer needed. A different HOME means a different
+  machine list and image cache; don't redirect it for routine runs.
 - **Unset proxy variables** (`env -u HTTP_PROXY ...`) before invoking smolvm. nono's audit
   proxy binds host loopback only; smolvm refuses to pass a loopback proxy into a machine
   (guest loopback is not host loopback) and aborts at config validation otherwise.
@@ -103,9 +113,8 @@ nono-sandboxed Pi sessions; the same rules apply to any agent-driven `smolvm` ca
   network enforcement is proxy-cooperative), so VM traffic bypasses the audit proxy. Use
   smolvm's `--allow-host-pattern` (DNS-level, CDN-safe) as the compensating egress filter;
   `n-vibe` restricts the guest to `api.mistral.ai`, `pypi.org`, and `files.pythonhosted.org`.
-- Verified in-sandbox: ephemeral run (alpine, ~230 ms boot, registry pull), persistent
-  `machine create/start/exec/stop/delete` with data surviving stop→start, all with HOME
-  redirected and proxies unset.
+- Verified in-sandbox: offline ephemeral VM with the normal HOME and proxies unset.
+  Earlier persistent lifecycle tests used a redirected HOME.
 
 If fully audited VM egress is ever required, the nono-side option is binding the audit proxy
 on a non-loopback interface so smolvm's `--use-host-proxy` rewrite can reach it — a

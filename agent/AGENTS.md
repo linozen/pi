@@ -18,7 +18,8 @@
 - If a command requires 1Password secrets, write an operator-run script instead of printing or revealing secrets in the session.
 - Treat Pi extensions as privileged code. Minimize dependencies and keep custom extensions reviewable.
 - Agents may use SSH for inspection. On dev, staging, and production hosts, every state-changing command (including Docker, Compose, database, and filesystem mutations) requires explicit operator approval of the exact target and command. Host Docker CLI/socket/Compose mutations still require explicit operator approval. Inside a disposable smolvm guest with its own Docker daemon, guest Docker/Compose and Docker-backed tests need no separate approval; never use the host socket or mount real credentials into the guest.
-- For smolvm under nono, Pi must have been launched with `--open-port`. Run smolvm with a writable redirected `HOME` and unset inherited `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and lowercase variants; do not forward nono's loopback proxy into the guest. If enabling guest networking, restrict egress with `--allow-host-pattern`.
+- In Paseo RPC sessions on macOS, use `script -q /dev/null ssh ...` when SSH needs 1Password approval; the pseudo-terminal allows the approval prompt to appear. Preserve the normal SSH safety rules.
+- For smolvm under nono, Pi must have been launched with `--open-port`. Use the normal `HOME` so workflows share the host image cache; unset inherited `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and lowercase variants instead of forwarding nono's loopback proxy into the guest. If enabling guest networking, restrict egress with `--allow-host-pattern`.
 
 ## nono sandbox
 
