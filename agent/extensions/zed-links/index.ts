@@ -6,17 +6,19 @@ const FILE_REFERENCE_INSTRUCTION =
 
 export default function zedLinks(pi: ExtensionAPI) {
 	let cwd = process.cwd();
+	let isTui = false;
 
 	pi.on("session_start", (_event, ctx) => {
 		cwd = ctx.cwd;
+		isTui = ctx.mode === "tui";
 	});
 
-	pi.on("before_agent_start", event => ({
+	pi.on("before_agent_start", (event, ctx) => ctx.mode === "tui" ? ({
 		systemPrompt: `${event.systemPrompt}\n\n${FILE_REFERENCE_INSTRUCTION}`,
-	}));
+	}) : undefined);
 
 	pi.registerMarkdownTransformer((markdown, { messageType, isStreaming }) => {
-		if (messageType !== "assistant" || isStreaming) return markdown;
+		if (!isTui || messageType !== "assistant" || isStreaming) return markdown;
 		return linkifyMarkdown(markdown, cwd);
 	});
 }

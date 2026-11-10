@@ -160,7 +160,7 @@ test("extension links only finalized assistant messages using the session cwd", 
 	};
 
 	zedLinks(pi as any);
-	handlers.get("session_start")?.({}, { cwd: root });
+	handlers.get("session_start")?.({}, { cwd: root, mode: "tui" });
 	assert.ok(transformer);
 
 	const input = "Open `src/main.ts`.";
@@ -171,6 +171,10 @@ test("extension links only finalized assistant messages using the session cwd", 
 		`Open [\`src/main.ts\`](zed://file${root}/src/main.ts).`,
 	);
 
-	const prompt = handlers.get("before_agent_start")?.({ systemPrompt: "base" });
+	const prompt = handlers.get("before_agent_start")?.({ systemPrompt: "base" }, { mode: "tui" });
 	assert.match(prompt.systemPrompt, /path by itself in inline code/);
+
+	handlers.get("session_start")?.({}, { cwd: root, mode: "rpc" });
+	assert.equal(transformer(input, { messageType: "assistant", isStreaming: false }), input);
+	assert.equal(handlers.get("before_agent_start")?.({ systemPrompt: "base" }, { mode: "rpc" }), undefined);
 });

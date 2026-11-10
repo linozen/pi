@@ -9,6 +9,8 @@ agent/aperture/auth.json
 agent/tavily.env
 agent/mcp-oauth.json
 agent/mcp-auth.json
+# Native MCP servers are configured separately on each workstation.
+agent/mcp.json
 agent/**/*.env
 .env*
 *.pem

@@ -27,6 +27,5 @@ This repository tracks the curated, reviewable parts of `~/.pi`.
 - `agent/extensions/subagents/` owns the local inspectable `subagent` tool, `/subagents` commands, the ctrl+shift+j live jobs view, and parent-decided timeout windows (`core.ts` is the tested pure logic).
 - `agent/subagents/` contains the fixed-tool read-only `scout`, `review`, and `librarian` profiles.
 - `agent/extensions/ask-user-question/` owns the local inspectable `ask_user_question` tool.
-- `agent/extensions/terminal-title.ts` owns terminal title updates.
-- `agent/extensions/zed-bell.ts` owns terminal bell notifications for Zed Terminal Threads.
-- `agent/mcp.json` configures native Pi MCP servers; OAuth credentials live in ignored `agent/mcp-auth.json`.
+- `agent/extensions/zed-links/` links local files for the Pi TUI, not RPC clients.
+- `agent/mcp.json` configures workstation-local native Pi MCP servers and is Git-ignored; OAuth credentials live in ignored `agent/mcp-auth.json`.
