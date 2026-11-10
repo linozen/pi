@@ -3,7 +3,7 @@
 ## Communication
 
 - Use functional, direct technical prose.
-- When referring to local files for Zed review, always use their full absolute paths, optionally followed by a 1-based `:line` or `:line:column` location.
+- When providing local files for editor review, use paths that the current client can open, with a 1-based `:line` or `:line:column` location when useful.
 - Do not use simulated empathy, rapport-building, validation prompts, praise, or enthusiasm markers.
 - Do not reassure, flatter, or validate ideas by default. Treat claims and plans as hypotheses to test.
 - Disagree explicitly when the user is likely wrong, the plan is brittle, unsafe, overcomplicated, or not worth doing. State the reason and the better alternative.
@@ -18,12 +18,11 @@
 - If a command requires 1Password secrets, write an operator-run script instead of printing or revealing secrets in the session.
 - Treat Pi extensions as privileged code. Minimize dependencies and keep custom extensions reviewable.
 - Agents may use SSH for inspection. On dev, staging, and production hosts, every state-changing command (including Docker, Compose, database, and filesystem mutations) requires explicit operator approval of the exact target and command. Host Docker CLI/socket/Compose mutations still require explicit operator approval. Inside a disposable smolvm guest with its own Docker daemon, guest Docker/Compose and Docker-backed tests need no separate approval; never use the host socket or mount real credentials into the guest.
-- In Paseo RPC sessions on macOS, use `script -q /dev/null ssh ...` when SSH needs 1Password approval; the pseudo-terminal allows the approval prompt to appear. Preserve the normal SSH safety rules.
 - For smolvm under nono, Pi must have been launched with `--open-port`. Use the normal `HOME` so workflows share the host image cache; unset inherited `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and lowercase variants instead of forwarding nono's loopback proxy into the guest. If enabling guest networking, restrict egress with `--allow-host-pattern`.
 
 ## nono sandbox
 
-If file, command, or network access fails with `Operation not permitted`, `Permission denied`, `EACCES`, `EPERM`, `landlock`, or sandbox-denied errors, diagnose with:
+When running inside nono, if file, command, or network access fails with `Operation not permitted`, `Permission denied`, `EACCES`, `EPERM`, `landlock`, or sandbox-denied errors, diagnose with:
 
 ```sh
 nono why --self --path <blocked-path> --op <read|write|readwrite>
@@ -51,9 +50,8 @@ Do not suggest `sudo`, `chmod`, `chown`, Full Disk Access, or Pi approval change
 - Do not optimize away trust-boundary validation, data-loss error handling, security, accessibility, or hardware/platform calibration.
 - Mark intentional simplifications with a `shortcut:` comment naming the ceiling and the upgrade trigger.
 - Make small conventional commits when asked to commit.
-- Treat repo-local `.plans/*.md` files as temporary Zed review files. Keep at most one active plan per checkout, keep it aligned with the current task, and delete it before final cleanup commits unless the user asks to keep it.
+- Treat repo-local `.plans/*.md` files as temporary review files. Keep at most one active plan per checkout, keep it aligned with the current task, and delete it before final cleanup commits unless the user asks to keep it.
 - Do not multiplex competing work in one checkout. If a second unrelated task, branch, or plan starts before the current one is cleaned up, create or switch to a separate `git worktree` for that work.
-- awork task branches use `feature/<lowercase-id>` (for example `feature/key-123`). Reuse a suitable clean checkout by default.
 - Leave one runnable verification for non-trivial logic.
 
 ## This `~/.pi` config
@@ -61,10 +59,10 @@ Do not suggest `sudo`, `chmod`, `chown`, Full Disk Access, or Pi approval change
 - This repo tracks curated Pi config, not runtime state.
 - Keep `agent/auth.json`, `agent/tavily.env`, `agent/mcp-auth.json`, `agent/mcp-oauth.json`, `agent/sessions/`, caches, crash logs, and `node_modules` out of git.
 - `agent/settings.json` is the main package/model/theme entry point.
-- The iptas workspace owns its awork skill and `/awork <TASK-ID>` command under `32.00_infra/.pi/`; do not duplicate them in this global config.
 - `agent/mcp.json` defines workstation-local, Git-ignored native Pi MCP servers; use `/mcp` for session status and sign-in.
 - `agent/extensions/context.ts` owns both `/context` reporting and subdirectory context injection.
 - `agent/extensions/subagents/` owns the local inspectable `subagent` tool, `/subagents` commands, the ctrl+shift+j live jobs view, and parent-decided timeout windows (`core.ts` is the tested pure logic).
 - `agent/subagents/` contains the fixed-tool read-only `scout`, `review`, and `librarian` profiles.
 - `agent/extensions/ask-user-question/` owns the local inspectable `ask_user_question` tool.
+- `agent/extensions/copy-code/` provides the Pi TUI clipboard shortcut.
 - `agent/extensions/zed-links/` links local files for the Pi TUI, not RPC clients.

@@ -57,19 +57,12 @@ function snapshot(overrides: Partial<JobSnapshot> = {}): JobSnapshot {
 test("resolveDefaultModel pairs profiles with providers and inherits for unknown providers", () => {
 	// Provider-wide defaults (no per-profile override).
 	assert.equal(resolveDefaultModel("general", { provider: "openai-codex", id: "gpt-5.6-sol" }), "openai-codex/gpt-6.1-sol");
-	assert.equal(resolveDefaultModel("general", { provider: "openrouter", id: "moonshotai/kimi-k3" }), "deepseek/deepseek-v4.1-flash");
-	assert.equal(resolveDefaultModel("general", { provider: "mistral", id: "zai-glm-5-3" }), "mistral/devstral-latest");
 	// Per-profile overrides.
 	assert.equal(resolveDefaultModel("implementation", { provider: "openai-codex", id: "gpt-5.6-sol" }), "openai-codex/gpt-6-astra");
 	assert.equal(resolveDefaultModel("scout", { provider: "openai-codex", id: "gpt-5.6-sol" }), "openai-codex/gpt-6-luna");
-	assert.equal(resolveDefaultModel("research", { provider: "openrouter", id: "moonshotai/kimi-k3" }), "z-ai/glm-5.3-flash");
-	assert.equal(resolveDefaultModel("review", { provider: "openrouter", id: "moonshotai/kimi-k3" }), "deepseek/deepseek-v4-pro");
-	assert.equal(resolveDefaultModel("review", { provider: "mistral", id: "zai-glm-5-3" }), "mistral/zai-glm-5-3");
-	assert.equal(resolveDefaultModel("librarian", { provider: "mistral", id: "zai-glm-5-3" }), "mistral/mistral-medium-3.5");
-	assert.equal(resolveDefaultModel("implementation", { provider: "openrouter", id: "moonshotai/kimi-k3" }), "deepseek/deepseek-v4-pro");
-	// Profiles without an override inherit the provider default.
-	assert.equal(resolveDefaultModel("scout", { provider: "mistral", id: "zai-glm-5-3" }), "mistral/devstral-latest");
-	assert.equal(resolveDefaultModel("implementation", { provider: "mistral", id: "zai-glm-5-3" }), "mistral/devstral-latest");
+	// Other providers inherit the actual parent model instead of stale mappings.
+	assert.equal(resolveDefaultModel("scout", { provider: "mistral", id: "model-x" }), "mistral/model-x");
+	assert.equal(resolveDefaultModel("review", { provider: "openrouter", id: "model-y" }), "openrouter/model-y");
 	// Unknown providers and missing session models.
 	assert.equal(resolveDefaultModel("implementation", { provider: "anthropic", id: "claude-x" }), "anthropic/claude-x");
 	assert.equal(resolveDefaultModel("implementation", undefined), undefined);

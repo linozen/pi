@@ -5,7 +5,14 @@
 agent/auth.json
 agent/mistral/auth.json
 agent/openrouter/auth.json
-agent/aperture/auth.json
+# Aperture is configured outside the portable repository.
+agent/aperture/
+agent/models.json
+# Pi may install platform-specific search binaries locally.
+agent/bin/
+# Workstation-local nono integration; installed separately when available.
+agent/extensions/nono-sandbox.ts
+agent/skills/nono-sandbox
 agent/tavily.env
 agent/mcp-oauth.json
 agent/mcp-auth.json

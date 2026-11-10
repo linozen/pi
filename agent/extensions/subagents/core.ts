@@ -22,8 +22,6 @@ export const MIN_HARD_TIMEOUT_SECONDS = 1_800;
 // to the parent session's own model (or, if that is unset, the child's settings default).
 const DEFAULT_SUBAGENT_MODELS: Record<string, string> = {
 	"openai-codex": "openai-codex/gpt-6.1-sol", // ChatGPT subscription
-	openrouter: "deepseek/deepseek-v4.1-flash", // Sep 2026 agentic flash; beats V4 Pro per DeepSeek
-	mistral: "mistral/devstral-latest", // herdr local proxy profile; agentic, cheap, no reasoning
 };
 
 // Per-profile overrides on top of the provider-wide defaults, keyed by profile name
@@ -34,22 +32,12 @@ const DEFAULT_SUBAGENT_MODELS: Record<string, string> = {
 const PROFILE_SUBAGENT_MODELS: Record<string, Record<string, string>> = {
 	scout: {
 		"openai-codex": "openai-codex/gpt-6-luna", // cheap tier for evidence runs
-		openrouter: "z-ai/glm-5.3-flash", // $0.075/$0.25, 1M ctx, reasoning
 	},
 	research: {
 		"openai-codex": "openai-codex/gpt-6-luna",
-		openrouter: "z-ai/glm-5.3-flash",
-	},
-	review: {
-		mistral: "mistral/zai-glm-5-3", // reasoning-capable reviewer; devstral has no reasoning
-		openrouter: "deepseek/deepseek-v4-pro", // 96.4% SWE-bench Verified class, $0.96/$1.91
-	},
-	librarian: {
-		mistral: "mistral/mistral-medium-3.5", // research/judgment workload with web tools
 	},
 	implementation: {
 		"openai-codex": "openai-codex/gpt-6-astra", // agent-tuned flagship
-		openrouter: "deepseek/deepseek-v4-pro",
 	},
 };
 

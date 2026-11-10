@@ -1,168 +1,76 @@
-# Local Pi launchers
+# Pi configuration
 
-Curated, reviewable configuration for `~/.pi/agent` and the matching nono launcher workflow.
+Curated Pi configuration for this workstation and portable agent hosts. Paseo
+is the primary interface; the Pi terminal UI remains available as a fallback.
+This repository does not include credentials, session history, or local MCP
+server configuration. Its agent-side instructions are in `agent/AGENTS.md`.
 
-## Daily workflow
+## Starting Pi
 
-Use the default OpenAI/ChatGPT subscription launcher for normal work:
+The Mac launchers are defined in the infra checkout at `31.00_infra/mbp/home.nix`:
 
-```sh
-n-pi
-```
+- `n-pi` / `n-pi-openai`: OpenAI Codex subscription through nono; also usable
+  as the terminal fallback. Paseo uses the same sandboxed launcher in RPC mode.
+- `n-pi-ap`: legacy workstation-local Aperture launcher, pending migration to
+  the project that uses it. Its ignored provider home is not in a fresh clone.
 
-For awork-backed changes in the iptas workspace, use the single kickoff command:
+Changes to the Mac launchers require a separately reviewed Nix activation;
+that activation can apply unrelated pending changes. The guest fleet has its
+own provisioning and is not updated by committing this repository.
 
-```text
-/awork KEY-123
-```
+## Components
 
-The repository-local command waits for Pi to become idle and starts the awork skill. The skill resolves the exact task, writes `.plans/KEY-123.md`, and prints that path for review in Zed. Reply `approved` to continue implementation and final awork sync in the same conversation; there is no separate implement or sync command.
+- `agent/settings.json` — package, model and TUI theme settings.
+- `agent/extensions/context.ts` — `/context` and subdirectory context loading.
+- `agent/extensions/subagents/` and `agent/subagents/` — bounded local
+  background subagents and read-only profiles. `/subagents view` and its
+  `ctrl+shift+j` shortcut require the Pi TUI; the tools work independently of
+  that view. Paseo's own agent tools depend on daemon access and configuration.
+- `agent/extensions/ask-user-question/` — structured questions.
+- `agent/extensions/zed-links/` — local Zed file links in the Pi TUI only.
+- `agent/extensions/copy-code/` — Pi TUI clipboard shortcut.
+- `agent/extensions/statusline.ts` — Pi TUI footer and `/chatgpt-limit`.
+- `agent/extensions/aliases.ts` — quit command aliases.
+- `agent/skills/` and `agent/prompts/` — opt-in skills and prompt templates.
+  The Anki skill requires `dt`; librarian web research requires web tools.
+- `agent/keybindings.json` and `agent/themes/` — Pi TUI presentation.
 
-For direct skill use:
+## Host-local resources
 
-```text
-/skill:awork-task KEY-123
-```
+Aperture models and provider settings, `agent/models.json`, Pi-managed
+`agent/bin/` search binaries, and native MCP settings are not tracked. Install
+`rg` and `fd` for the host or let Pi provision its platform-specific binaries.
+For nono, install its Pi package on the host and link its extension and skill
+locally; this Mac uses ignored symlinks at `agent/extensions/nono-sandbox.ts`
+and `agent/skills/nono-sandbox`. The nono installer may write a host-specific
+package path to `agent/settings.json`; keep that path out of commits.
 
-Plan markdown files are temporary repo-local Zed review files. Use `.plans/*.md` for the current task only, keep at most one active plan per checkout, and keep it aligned with that task. awork plans retain a generated sync ID until the outcome comment and approved status transition have both been verified. Delete plan files only after successful finalization unless a plan is intentionally being preserved.
+## Local MCP configuration
 
-Use a suitable clean checkout for normal task work. Do not run competing work in the same checkout: create or switch to a separate `git worktree` when another task must proceed concurrently.
+Pi reads user-level servers from `agent/mcp.json` and, in trusted projects,
+project servers from `.pi/mcp.json`. The user-level file is Git-ignored and
+must be configured separately on each host, for example with `pi mcp add`.
+The Aperture launcher disables MCP. Credentials and OAuth tokens remain outside
+Git. Use `/mcp` to inspect session status and sign in; after editing the file,
+run `/reload` or restart Pi. `pi mcp list` checks configured connections, which
+requires their services to be available. Pi does not read `.mcp.json`.
 
-## Retained components
+## Verification
 
-- `agent/settings.json` — Pi package/model/theme entry point.
-- `agent/aperture/models.json` — non-secret provider endpoint descriptor for the optional Aperture launcher.
-- `agent/mcp.json` — workstation-local, Git-ignored native Pi MCP server definitions; configure separately on each host.
-- `agent/extensions/statusline.ts` — custom one-line footer/statusline and `/chatgpt-limit` usage command.
-- `agent/extensions/aliases.ts` — `/exit`, `/exti`, `/q`, and `/bye` aliases.
-- `agent/extensions/context.ts` — `/context` report and subdirectory `AGENTS.md` / `CLAUDE.md` context injection.
-- `agent/extensions/subagents/` — local inspectable background `subagent` jobs with `subagent_result` collection/extension/cancellation, Ctrl+O-aware compact rendering, compact ephemeral child runs, bounded parallel execution, latency metrics, failure reasons, parent-decided timeout windows (expiry notifies the parent instead of killing; hard ceiling `max(1800s, 3x window)`), a ctrl+shift+j live jobs view (`/subagents view`), `/subagents` profile/job listing, `/subagents doctor`, and blocking `/subagents run <profile> <task>`. `core.ts` holds the tested pure logic.
-- `agent/subagents/` — read-only `scout`, `review`, and `librarian` specialist profiles with fixed tool sets and inherited parent models.
-- `agent/extensions/ask-user-question/` — local inspectable `ask_user_question` tool for structured clarifying questions.
-- `agent/extensions/zed-links/` — Zed file links and path-format instructions for the Pi TUI only; Paseo RPC renders without them.
-- `agent/keybindings.json` — small TUI navigation keybindings.
-- `agent/themes/zedokai-pi.json` — custom theme.
-- `agent/skills/` — local opt-in skills.
-
-## Launchers and credentials
-
-The default launcher is `n-pi`, equivalent to `n-pi-openai`:
-
-- Uses nono profile `pi-base-local`.
-- Reads `~/.pi/agent/auth.json` for ChatGPT/OpenAI Codex subscription OAuth.
-- Does not inject Azure or Mistral API-key variables.
-- All launchers set `NONO_LOG_FILE` to `~/.local/state/nono/logs/pi-<provider>-<yyyymmdd>.log`
-  (defined in the linozen workspace at `31.00_infra/mbp/home.nix`, `programs.zsh.initExtra`; apply with
-  `31.00_infra/mbp/bootstrap.sh switch`, which builds the same nix-darwin flake). nono's proxy keeps only the first 4096 network
-  audit events per session and then warns once per dropped event on stderr; those WARN lines corrupt
-  TUI display in herdr threads. `NONO_LOG_FILE` routes nono/proxy tracing logs to the file instead of
-  the terminal while keeping banners, summaries, and diagnostics footers on the terminal. The audit
-  trail stays enabled; `--no-audit` would remove the warnings too but disables the per-session audit
-  trail. Verify after relaunching:
-
-```sh
-ls -la ~/.local/state/nono/logs/
-grep -c "Network audit buffer full" ~/.local/state/nono/logs/pi-*.log
-```
-
-Optional provider launchers remain escape hatches:
-
-- `n-pi-azure` — profile `pi-azure-local`, injects only `AZURE_IPTAS_KEY`, denies `auth.json`, starts `azure-iptas-chat` / `DeepSeek-V4-Flash`.
-- `n-pi-ap` — uses the Aperture provider through a separate agent home and no MCP servers.
-
-Secrets live outside git in OAuth files or 1Password-backed nono `env_credentials`.
-
-## Security assessments
-
-Use the private Strix runner on Fly.io. Setup, secrets, scope, and lifecycle
-instructions are in
-`/Users/lino/Documents/30-39_Code/31_linozen.com/31.01_sites/strix/README.md`.
-
-After changing the Aperture launcher, validate its Nix source with
-`nix-instantiate --parse mbp/home.nix >/dev/null` from the infrastructure
-checkout. Apply the reviewed configuration separately with `nix-config-switch`;
-that switch also applies other pending configuration changes.
-
-## smolvm VM lane
-
-For agent-driven `smolvm` calls inside nono-sandboxed Pi sessions:
-
-- **Keep the normal HOME.** smolvm stores machine state under
-  `~/Library/Application Support/smolvm/` and caches under `~/Library/Caches/smolvm/`.
-  The current Pi/nono profile permits those paths; an offline ephemeral VM booted with
-  the normal HOME in-sandbox. The earlier DEV-134 workaround of redirecting HOME to
-  `~/.cache/smolvm-home` is no longer needed. A different HOME means a different
-  machine list and image cache; don't redirect it for routine runs.
-- **Unset proxy variables** (`env -u HTTP_PROXY ...`) before invoking smolvm. nono's audit
-  proxy binds host loopback only; smolvm refuses to pass a loopback proxy into a machine
-  (guest loopback is not host loopback) and aborts at config validation otherwise.
-- **The session's nono invocation must carry an IPC port allowance** (`--open-port`). Under
-  nono's default proxy-only macOS seatbelt template, `machine start`/`machine run` die at
-  `krun_start_enter` with `-22 (EINVAL)` (libkrun rejects the VM device setup); any
-  `--open-port` flips seatbelt generation into the proxy+IPC template, under which VMs boot.
-  Both Pi launchers carry this: `n-pi-openai` → `--open-port 17776` and `n-pi-ap` →
-  `--open-port 17779`. The port is a seatbelt
-  allowance only — nothing binds it, and the audit proxy keeps a random per-session
-  port, so concurrent same-launcher sessions do not collide.
-  Bisected empirically (DEV-134): no flags FAIL, `--proxy-port` alone FAIL, `--open-port`
-  alone PASS, profile choice irrelevant.
-- **Guest egress is not nono-audited.** Direct TCP from sandboxed processes is allowed (nono's
-  network enforcement is proxy-cooperative), so VM traffic bypasses the audit proxy.
-  Restrict guest egress with smolvm's `--allow-host-pattern` (DNS-level, CDN-safe).
-- Verified in-sandbox: offline ephemeral VM with the normal HOME and proxies unset.
-  Earlier persistent lifecycle tests used a redirected HOME.
-
-If fully audited VM egress is ever required, the nono-side option is binding the audit proxy
-on a non-loopback interface so smolvm's `--use-host-proxy` rewrite can reach it — a
-boundary decision for the nono owner, not a Pi-session change.
-
-## nono profiles
-
-Validate profiles:
+Before committing, inspect `git status --short --ignored` and ensure runtime
+files and credentials remain untracked. Run the local extension tests:
 
 ```sh
-nono profile validate pi-base-local
-nono profile validate pi-azure-local
-nono profile validate pi-ap-local
+node --test agent/extensions/{ask-user-question,subagents,copy-code,zed-links}/core.test.ts
 ```
 
-Inspect profile inheritance and diffs:
+For changes to native MCP configuration, use `/mcp` or `pi mcp list`. For
+changes to the Mac launchers, validate the Nix source from the infra checkout:
 
 ```sh
-nono profile show pi-base-local
-nono profile diff pi-base-local pi-azure-local
-nono profile diff pi-base-local pi-ap-local
+nix-instantiate --parse mbp/home.nix >/dev/null
 ```
 
-Check credential presence without printing secrets:
-
-```sh
-nono run --silent --allow-cwd --profile pi-azure-local -- \
-  /bin/sh -c 'echo AZURE_IPTAS_KEY=$([ -n "${AZURE_IPTAS_KEY:-}" ] && echo present || echo absent)'
-```
-
-## Verification after config changes
-
-```sh
-git status --short --ignored
-pi mcp list
-node --test agent/extensions/ask-user-question/core.test.ts
-node --test agent/extensions/subagents/core.test.ts
-PI_OFFLINE=1 pi --no-session --list-models >/dev/null
-```
-
-In Pi from the iptas workspace:
-
-```text
-/reload
-/awork KEY-123
-/skill:awork-task KEY-123
-/chatgpt-limit
-/context
-/subagents
-/subagents doctor
-/subagents view (or ctrl+shift+j)
-/mcp
-```
-
-Native MCP reads workstation-local `agent/mcp.json` globally and trusted project `.pi/mcp.json` files. It does not read `.mcp.json`. The user-level file is ignored by Git and must be configured on each host, for example with `pi mcp add`. Use `/mcp` to inspect servers and `/mcp login <server>` to authorize any OAuth servers. Native credentials are stored in ignored `agent/mcp-auth.json`; old adapter credentials do not transfer. After editing MCP config, run `/reload` or restart Pi, then `pi mcp list` to check connectivity. Local servers must be running to connect.
+That syntax check does not activate the configuration or test a live Paseo
+session. Verify affected UI interactions in Paseo and, where applicable, the
+Pi TUI after `/reload` or restart.

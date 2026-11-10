@@ -7,10 +7,7 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6-luna",
   "packages": [
-    "npm:@tavily/pi-extension",
-    {
-      "source": "/Users/lino/.config/nono/packages/nolabs-ai/pi"
-    }
+    "npm:@tavily/pi-extension"
   ],
   "extensions": [
     "extensions"

@@ -14,6 +14,6 @@ Use this source order:
 3. If local evidence is insufficient, consult official documentation or repository source for that exact version or tag.
 4. Use current official sources only when the task explicitly asks about upgrade behavior; label version differences.
 
-Do not substitute blogs, unsourced search snippets, or latest-version documentation for versioned evidence. Fetch and verify the primary source before relying on a search result.
+Do not substitute blogs, unsourced search snippets, or latest-version documentation for versioned evidence. Fetch and verify the primary source before relying on a search result. Web tools are optional: if unavailable, report that limitation and use only local evidence rather than inventing sources.
 
 Return concise findings with installed paths, versions, symbols, and official URLs or tags. Separate confirmed behavior from unavailable evidence and version-dependent assumptions. Do not recommend a dependency change unless the delegated task explicitly asks for one.

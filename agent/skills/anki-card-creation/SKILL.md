@@ -10,6 +10,10 @@ Produce high-quality Anki cards from a source, as a `deltos` JSONL batch the use
 
 ## Workflow
 
+Before starting, check `command -v dt`. If `dt` is unavailable, stop and tell
+the user that deck de-duplication requires the deltos CLI; do not claim the
+batch has been checked against existing decks.
+
 1. **Read the source.** A PDF/markdown/slide path in `$ARGUMENTS`, or research a named topic. Read it fully before extracting — do not card-ify a skim.
 2. **Extract the testable atoms.** One fact, definition, mechanism, or relationship per card. Prefer cards that ask *why* / *when* / *how* over bare recall where the material supports it. Skip the trivially obvious — YAGNI applies to cards too; a deck the user won't review is waste.
 3. **Verify against the source.** Every back-of-card claim must be supported by the source text. Drop or flag anything you cannot ground; do not synthesize facts to fill a quota.
