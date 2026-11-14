@@ -14,7 +14,7 @@ This repository tracks the curated, reviewable parts of `~/.pi`.
 - Make small, atomic commits using conventional commit messages.
 - Before committing, run `git status --short --ignored` and verify ignored secret/runtime files remain untracked.
 - Keep repo-local `.plans/*.md` as temporary review files. Keep at most one active plan per checkout and delete it before final cleanup commits unless the user asks to preserve it.
-- Do not multiplex competing work in one checkout. If a second unrelated task, branch, or plan starts before the current one is cleaned up, create or switch to a separate `git worktree` for that work.
+- Keep one writer per checkout. For unrelated concurrent work, use a separate checkout; prefer a Paseo worktree workspace when Paseo manages the task. Paseo child agents inherit their parent's workspace unless explicitly assigned elsewhere, so do not delegate competing edits into that workspace. Read-only review may share it. Before archiving a managed workspace, verify its work and local-only data are preserved.
 - If a change affects launchers or nono profiles, document the exact verification command in `README.md` or the relevant plan.
 
 ## Current architecture

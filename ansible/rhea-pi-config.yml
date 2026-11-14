@@ -1,0 +1,28 @@
+---
+# Keep the fleet's current configuration intact if the standardized provider is
+# not configured on every guest. Do not print credentials or refresh tokens.
+- name: Check the standardized Pi provider on all Rhea guests
+  hosts: rhea_agents
+  gather_facts: false
+  any_errors_fatal: true
+  vars:
+    pi_default_provider: "{{ (lookup('file', playbook_dir + '/../agent/settings.json') | from_json).defaultProvider }}"
+  tasks:
+    - name: Check provider authentication without refreshing or printing credentials
+      ansible.builtin.command:
+        argv: [/usr/local/bin/pi, auth, check, --provider, "{{ pi_default_provider }}", --no-refresh, --json]
+      environment:
+        PI_OFFLINE: '1'
+      register: pi_auth_check
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Require configured provider on each guest before changing any guest
+      ansible.builtin.assert:
+        that: pi_auth_check.rc == 0
+        fail_msg: "{{ pi_default_provider }} credentials are not configured on {{ inventory_hostname }}; sign in on that guest before rollout."
+
+# The infrastructure repository owns the inventory, guest safety policy and
+# provisioning tasks. Supply its absolute path as pi_fleet_infra.
+- import_playbook: "{{ pi_fleet_infra }}/ansible/rhea-pi-config.yml"

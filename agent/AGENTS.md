@@ -51,7 +51,7 @@ Do not suggest `sudo`, `chmod`, `chown`, Full Disk Access, or Pi approval change
 - Mark intentional simplifications with a `shortcut:` comment naming the ceiling and the upgrade trigger.
 - Make small conventional commits when asked to commit.
 - Treat repo-local `.plans/*.md` files as temporary review files. Keep at most one active plan per checkout, keep it aligned with the current task, and delete it before final cleanup commits unless the user asks to keep it.
-- Do not multiplex competing work in one checkout. If a second unrelated task, branch, or plan starts before the current one is cleaned up, create or switch to a separate `git worktree` for that work.
+- Keep one writer per checkout. For unrelated concurrent work, use a separate checkout; prefer a Paseo worktree workspace when Paseo manages the task. Paseo child agents inherit their parent's workspace unless explicitly assigned elsewhere, so do not delegate competing edits into that workspace. Read-only review may share it. Before archiving a managed workspace, verify its work and local-only data are preserved.
 - Leave one runnable verification for non-trivial logic.
 
 ## This `~/.pi` config

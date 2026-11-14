@@ -55,6 +55,27 @@ Git. Use `/mcp` to inspect session status and sign in; after editing the file,
 run `/reload` or restart Pi. `pi mcp list` checks configured connections, which
 requires their services to be available. Pi does not read `.mcp.json`.
 
+## Rhea guest rollout
+
+`ansible/rhea-pi-config.yml` is the entrypoint for the three isolated Rhea
+agent guests. The infra checkout owns their inventory, guest safety policy,
+and shared provisioning tasks; it must be present locally. The playbook checks
+that the Mac's configured default provider is authenticated on every targeted
+guest without printing credentials or refreshing tokens, before changing any
+of them. It then copies only the explicitly curated guest resources and sets
+all targeted guests to the Mac's provider/model defaults. It does not copy
+authentication, local MCP settings, or the Mac's sandbox configuration.
+
+Review the infra and Pi source changes, ensure each guest has its own login,
+and obtain explicit operator approval before any production rollout. For example,
+with `INFRA` set to the absolute path of the reviewed infra checkout:
+
+```sh
+cd "$INFRA/ansible"
+ANSIBLE_CONFIG="$PWD/vm.cfg" ansible-playbook "$HOME/.pi/ansible/rhea-pi-config.yml" \
+  -e "pi_fleet_infra=$INFRA" --limit rhea_agents
+```
+
 ## Verification
 
 Before committing, inspect `git status --short --ignored` and ensure runtime
