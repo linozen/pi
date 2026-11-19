@@ -54,18 +54,21 @@ function snapshot(overrides: Partial<JobSnapshot> = {}): JobSnapshot {
 	};
 }
 
-test("resolveDefaultModel pairs profiles with providers and inherits for unknown providers", () => {
-	// Provider-wide defaults (no per-profile override).
-	assert.equal(resolveDefaultModel("general", { provider: "openai-codex", id: "gpt-5.6-sol" }), "openai-codex/gpt-6.1-sol");
-	// Per-profile overrides.
-	assert.equal(resolveDefaultModel("implementation", { provider: "openai-codex", id: "gpt-5.6-sol" }), "openai-codex/gpt-6-astra");
-	assert.equal(resolveDefaultModel("scout", { provider: "openai-codex", id: "gpt-5.6-sol" }), "openai-codex/gpt-6-luna");
-	// Other providers inherit the actual parent model instead of stale mappings.
-	assert.equal(resolveDefaultModel("scout", { provider: "mistral", id: "model-x" }), "mistral/model-x");
-	assert.equal(resolveDefaultModel("review", { provider: "openrouter", id: "model-y" }), "openrouter/model-y");
-	// Unknown providers and missing session models.
-	assert.equal(resolveDefaultModel("implementation", { provider: "anthropic", id: "claude-x" }), "anthropic/claude-x");
-	assert.equal(resolveDefaultModel("implementation", undefined), undefined);
+test("model selection prefers the parent's explicit choice, then the profile pin, then the parent model", () => {
+	const task = { description: "D", prompt: "P" };
+	const parentModel = resolveDefaultModel({ provider: "openai-codex", id: "parent-model" });
+	const pinnedProfile = { ...profile, model: "provider/profile-model" };
+	for (const [profileConfig, params, expected] of [
+		[pinnedProfile, { ...task, model: "provider/chosen-model:high" }, "provider/chosen-model:high"],
+		[pinnedProfile, task, "provider/profile-model"],
+		[profile, task, "openai-codex/parent-model"],
+	] as const) {
+		const { args, model } = buildRunArgs(profileConfig, params, false, parentModel);
+		assert.equal(model, expected);
+		assert.equal(args[args.indexOf("--model") + 1], expected);
+	}
+	const { args } = buildRunArgs(profile, task, false, resolveDefaultModel(undefined));
+	assert.ok(!args.includes("--model"));
 });
 
 test("trimOutput keeps short values and marks truncation", () => {

@@ -303,7 +303,7 @@ function prepareSubagent(params: SubagentRunParams, ctx: ExtensionContext | Exte
 	const requestedProfile = params.agent ?? "general";
 	const profile = agents[requestedProfile];
 	if (!profile) throw new Error(`Unknown subagent profile '${requestedProfile}'. Run /subagents to list available profiles.`);
-	const { args, timeoutSeconds, model } = buildRunArgs(profile, params, ctx.isProjectTrusted(), resolveDefaultModel(profile.name, ctx.model));
+	const { args, timeoutSeconds, model } = buildRunArgs(profile, params, ctx.isProjectTrusted(), resolveDefaultModel(ctx.model));
 	return { profile, args, timeoutMs: timeoutSeconds * 1000, model };
 }
 
@@ -680,7 +680,8 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			const lines = Object.values(agents).map((agent) => formatAgentLine(agent, resolveDefaultModel(agent.name, ctx.model)));
+			const defaultModel = resolveDefaultModel(ctx.model);
+			const lines = Object.values(agents).map((agent) => formatAgentLine(agent, defaultModel));
 			ctx.ui.notify([
 				`Subagents:`,
 				...lines,
@@ -712,6 +713,7 @@ export default function (pi: ExtensionAPI) {
 			"For a multi-part task with an independent evidence-gathering or review lane, consider starting one read-only subagent while you continue the main work.",
 			"Prefer direct inspection and verification; do not use subagent for work the parent can complete with a few local tool calls.",
 			"Use the scout profile for fast codebase evidence, the review profile only for an independent correctness check, and the librarian profile for versioned dependency or API research.",
+			"If a different model is better suited to the task, use codemode when available to discover usable chat models with models.getAvailableOfType('chat'), then pass the exact provider/model-id. Do not guess model IDs. Omit model to use the profile's model or inherit your current model.",
 			"At most two review subagents are permitted per user request. Never ask a reviewer to review fixes made in response to an earlier review; run targeted verification instead.",
 			"Treat subagent findings as evidence, not required work. Confirm a finding before changing code, and do not implement style, speculative hardening, or optional refactors during a correctness task.",
 			"Start multiple read-only subagents only when their scopes are independent and parallel evidence will materially reduce latency.",
@@ -724,7 +726,7 @@ export default function (pi: ExtensionAPI) {
 			description: Type.String({ description: "Short task title for the subagent." }),
 			prompt: Type.String({ description: "Complete delegated task instructions." }),
 			tools: Type.Optional(Type.String({ description: "Optional comma-separated Pi tools selection for profiles that do not fix their own tools, for example read,grep,find,ls." })),
-			model: Type.Optional(Type.String({ description: "Optional Pi model selector, for example openrouter/deepseek/deepseek-v4-flash or sonnet:high. Defaults to the per-provider default for the current session." })),
+			model: Type.Optional(Type.String({ description: "Optional Pi model selector (prefer an exact provider/model-id, with an optional :thinking suffix). Overrides the profile model. If neither is set, inherits the parent session's current model." })),
 			thinking: Type.Optional(Type.String({ description: "Optional thinking level: off, minimal, low, medium, high, xhigh." })),
 			timeout_seconds: Type.Optional(Type.Number({ description: "Timeout window in seconds. Defaults to the profile timeout or 300; review jobs are capped at 300. On expiry the job keeps running and you decide; a hard ceiling of max(1800s, 3x window) always applies." })),
 		}),

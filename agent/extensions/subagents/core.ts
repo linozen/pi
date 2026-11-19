@@ -17,35 +17,8 @@ export const MAX_RETAINED_JOBS = 32;
 // Absolute lifetime ceiling for a child process regardless of window extensions.
 export const MIN_HARD_TIMEOUT_SECONDS = 1_800;
 
-// Lower-cost subagent default models keyed by the parent session's active provider.
-// Add an entry per provider you actually run; providers without an entry fall back
-// to the parent session's own model (or, if that is unset, the child's settings default).
-const DEFAULT_SUBAGENT_MODELS: Record<string, string> = {
-	"openai-codex": "openai-codex/gpt-6.1-sol", // ChatGPT subscription
-};
-
-// Per-profile overrides on top of the provider-wide defaults, keyed by profile name
-// then provider. Sparse on purpose: a missing entry falls back to the provider default.
-// Evidence profiles get the cheapest capable tier; review and implementation get the
-// strong agentic picks; librarian gets a reasoning-tuned model where the coding
-// default is the wrong shape.
-const PROFILE_SUBAGENT_MODELS: Record<string, Record<string, string>> = {
-	scout: {
-		"openai-codex": "openai-codex/gpt-6-luna", // cheap tier for evidence runs
-	},
-	research: {
-		"openai-codex": "openai-codex/gpt-6-luna",
-	},
-	implementation: {
-		"openai-codex": "openai-codex/gpt-6-astra", // agent-tuned flagship
-	},
-};
-
-export function resolveDefaultModel(profileName: string, ctxModel: { provider: string; id: string } | undefined): string | undefined {
-	if (!ctxModel) return undefined;
-	return PROFILE_SUBAGENT_MODELS[profileName]?.[ctxModel.provider]
-		?? DEFAULT_SUBAGENT_MODELS[ctxModel.provider]
-		?? `${ctxModel.provider}/${ctxModel.id}`;
+export function resolveDefaultModel(ctxModel: { provider: string; id: string } | undefined): string | undefined {
+	return ctxModel && `${ctxModel.provider}/${ctxModel.id}`;
 }
 
 export type AgentProfile = {
