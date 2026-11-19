@@ -2,11 +2,10 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { Box, Text } from "@earendil-works/pi-tui";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, type Dirent } from "node:fs";
 import * as path from "node:path";
+import { buildSubdirectoryContext, sizeOf, tokenEstimate, type ContextFileInfo, type Size } from "./context/core.ts";
 
 const MESSAGE_TYPE = "context-report";
 const SUBDIRECTORY_CONTEXT_NAMES = new Set(["AGENTS.md", "CLAUDE.md"]);
-const MAX_INJECTED_FILES = 20;
-const MAX_INJECTED_CHARS = 30_000;
 const MAX_SCANNED_DIRS = 2_000;
 const MAX_DISCOVERED_FILES = 200;
 const EXCLUDED_DIRS = new Set([
@@ -28,17 +27,7 @@ const EXCLUDED_DIRS = new Set([
 	"vendor",
 ]);
 
-type Size = {
-	bytes: number;
-	chars: number;
-	tokens: number;
-};
-
-type ContextFileInfo = {
-	path: string;
-	bytes: number;
-	tokens: number;
-};
+type InjectionSummary = ReturnType<typeof buildSubdirectoryContext>["summary"];
 
 type SubdirectoryContextFile = ContextFileInfo & {
 	dir: string;
@@ -63,7 +52,8 @@ type ContextReport = {
 	contextUsage?: { tokens: number; limit?: number; percent?: number };
 	systemPrompt: Size;
 	contextFiles: ContextFileInfo[];
-	subdirectoryContextFiles: ContextFileInfo[];
+	lastInjection?: InjectionSummary;
+	subdirectoryContextFiles?: ContextFileInfo[];
 	skills: Array<{ name: string; path?: string; tokens: number }>;
 	tools: ToolInfo[];
 	activeToolCount: number;
@@ -72,18 +62,6 @@ type ContextReport = {
 	promptParts: Array<{ name: string; tokens: number }>;
 	generatedAt: number;
 };
-
-function tokenEstimate(value: string): number {
-	return Math.ceil(value.length / 4);
-}
-
-function sizeOf(value: string): Size {
-	return {
-		bytes: Buffer.byteLength(value, "utf8"),
-		chars: value.length,
-		tokens: tokenEstimate(value),
-	};
-}
 
 function formatNumber(value: number | undefined): string {
 	return value === undefined ? "?" : value.toLocaleString("en-US");
@@ -251,39 +229,6 @@ function findRelevantSubdirectoryContextFiles(root: string, prompt: string, alre
 	return [...files.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 
-function buildSubdirectoryContextSections(files: SubdirectoryContextFile[]): { sections: string[]; omittedFiles: number; truncatedChars: number } {
-	const sections: string[] = [];
-	let chars = 0;
-	let truncatedChars = 0;
-
-	for (const file of files.slice(0, MAX_INJECTED_FILES)) {
-		const prefix = `<project_instructions path="${file.path}">\n`;
-		const suffix = "\n</project_instructions>";
-		const remaining = MAX_INJECTED_CHARS - chars - prefix.length - suffix.length;
-		if (remaining <= 0) {
-			truncatedChars += file.content.length;
-			break;
-		}
-
-		let content = file.content;
-		if (file.content.length > remaining) {
-			const notice = "\n\n[Subdirectory context truncated.]";
-			const keptChars = Math.max(0, remaining - notice.length);
-			content = `${file.content.slice(0, keptChars)}${notice.slice(0, remaining - keptChars)}`;
-			truncatedChars += file.content.length - keptChars;
-		}
-		const section = `${prefix}${content}${suffix}`;
-		sections.push(section);
-		chars += section.length;
-	}
-
-	return {
-		sections,
-		omittedFiles: Math.max(0, files.length - MAX_INJECTED_FILES),
-		truncatedChars,
-	};
-}
-
 function loadedContextFilesFromOptions(options: unknown): ContextFileInfo[] {
 	const optionRecord = asRecord(options);
 	return (Array.isArray(optionRecord.contextFiles) ? optionRecord.contextFiles : []).map((file) => {
@@ -298,7 +243,7 @@ function loadedContextFilesFromOptions(options: unknown): ContextFileInfo[] {
 	});
 }
 
-function buildReport(pi: ExtensionAPI, ctx: ExtensionCommandContext): ContextReport {
+function buildReport(pi: ExtensionAPI, ctx: ExtensionCommandContext, lastInjection: InjectionSummary | undefined, inventory: boolean): ContextReport {
 	const options = ctx.getSystemPromptOptions();
 	const optionRecord = asRecord(options);
 	const systemPrompt = ctx.getSystemPrompt();
@@ -307,8 +252,10 @@ function buildReport(pi: ExtensionAPI, ctx: ExtensionCommandContext): ContextRep
 	const usage = ctx.getContextUsage();
 	const model = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
 	const contextFiles = loadedContextFilesFromOptions(options);
-	const alreadyLoadedContextPaths = new Set(contextFiles.map(file => path.resolve(file.path)));
-	const subdirectoryContextFiles = findSubdirectoryContextFiles(ctx.cwd, alreadyLoadedContextPaths);
+	const subdirectoryContextFiles = inventory
+		? findSubdirectoryContextFiles(ctx.cwd, new Set(contextFiles.map(file => path.resolve(file.path))))
+			.map(({ path, bytes, tokens }) => ({ path, bytes, tokens }))
+		: undefined;
 
 	const skills = (Array.isArray(optionRecord.skills) ? optionRecord.skills : []).map((skill) => {
 		const record = asRecord(skill);
@@ -351,7 +298,7 @@ function buildReport(pi: ExtensionAPI, ctx: ExtensionCommandContext): ContextRep
 	const promptParts = [
 		{ name: "system prompt total", tokens: tokenEstimate(systemPrompt) },
 		{ name: "startup context files", tokens: contextFiles.reduce((sum, item) => sum + item.tokens, 0) },
-		{ name: "subdirectory context files available to injector", tokens: subdirectoryContextFiles.reduce((sum, item) => sum + item.tokens, 0) },
+		{ name: "subdirectory context added on last turn", tokens: lastInjection?.size.tokens ?? 0 },
 		{ name: "active tool definitions", tokens: tools.filter(t => t.active).reduce((sum, item) => sum + item.totalTokens, 0) },
 		{ name: "skills metadata", tokens: skills.reduce((sum, item) => sum + item.tokens, 0) },
 	];
@@ -363,6 +310,7 @@ function buildReport(pi: ExtensionAPI, ctx: ExtensionCommandContext): ContextRep
 		contextUsage: usage ? { tokens: usage.tokens ?? 0, limit: usage.contextWindow, percent: usage.percent ?? undefined } : undefined,
 		systemPrompt: sizeOf(systemPrompt),
 		contextFiles,
+		lastInjection,
 		subdirectoryContextFiles,
 		skills,
 		tools,
@@ -378,7 +326,7 @@ function renderReport(report: ContextReport, expanded: boolean, theme: { fg: (na
 	const activeTools = report.tools.filter(t => t.active);
 	const mcpTools = report.tools.filter(t => t.name === "mcp" || /mcp/i.test(t.name) || /mcp/i.test(t.path) || /mcp/i.test(t.source));
 	const contextFileTokens = report.contextFiles.reduce((sum, item) => sum + item.tokens, 0);
-	const subdirectoryContextFileTokens = report.subdirectoryContextFiles.reduce((sum, item) => sum + item.tokens, 0);
+	const injection = report.lastInjection;
 	const activeToolTokens = activeTools.reduce((sum, item) => sum + item.totalTokens, 0);
 	const mcpTokens = mcpTools.filter(t => t.active).reduce((sum, item) => sum + item.totalTokens, 0);
 
@@ -391,20 +339,34 @@ function renderReport(report: ContextReport, expanded: boolean, theme: { fg: (na
 	}
 	lines.push(`system prompt: ${formatNumber(report.systemPrompt.tokens)} tokens (${formatNumber(report.systemPrompt.bytes)} bytes)`);
 	lines.push(`startup context files: ${report.contextFiles.length} files, ${formatNumber(contextFileTokens)} tokens`);
-	lines.push(`subdirectory context files: ${report.subdirectoryContextFiles.length} files, ${formatNumber(subdirectoryContextFileTokens)} tokens available to injector`);
+	lines.push(injection
+		? `last-turn subdirectory context: ${injection.files.length} files, ~${formatNumber(injection.size.tokens)} tokens added (${formatNumber(injection.size.bytes)} bytes)`
+		: "last-turn subdirectory context: no turn recorded");
 	lines.push(`tools: ${report.activeToolCount}/${report.allToolCount} active, ~${formatNumber(activeToolTokens)} active-definition tokens`);
 	lines.push(`MCP/tool adapter definitions: ~${formatNumber(mcpTokens)} active tokens across ${mcpTools.filter(t => t.active).length} active MCP-ish tool(s)`);
 	lines.push(`commands: ${report.commands.length} extension/prompt/skill commands`);
+
+	if (injection) {
+		lines.push("");
+		lines.push(theme.fg("accent", "Subdirectory context injected on the last turn"));
+		if (injection.files.length === 0) lines.push("  none");
+		for (const file of injection.files) lines.push(`  ${formatNumber(file.tokens).padStart(6)} tok  ${formatNumber(file.bytes).padStart(7)} B  ${file.path}`);
+		if (injection.omittedFiles || injection.truncatedChars) {
+			lines.push(`  omitted ${formatNumber(injection.omittedFiles)} file(s); truncated ${formatNumber(injection.truncatedChars)} character(s) from included files`);
+		}
+	}
 
 	lines.push("");
 	lines.push(theme.fg("accent", "Startup context files"));
 	if (report.contextFiles.length === 0) lines.push("  none");
 	for (const file of report.contextFiles) lines.push(`  ${formatNumber(file.tokens).padStart(6)} tok  ${formatNumber(file.bytes).padStart(7)} B  ${file.path}`);
 
-	lines.push("");
-	lines.push(theme.fg("accent", "Subdirectory context files available to injector"));
-	if (report.subdirectoryContextFiles.length === 0) lines.push("  none");
-	for (const file of report.subdirectoryContextFiles) lines.push(`  ${formatNumber(file.tokens).padStart(6)} tok  ${formatNumber(file.bytes).padStart(7)} B  ${file.path}`);
+	if (report.subdirectoryContextFiles) {
+		lines.push("");
+		lines.push(theme.fg("accent", "Subdirectory context inventory (not necessarily injected)"));
+		if (report.subdirectoryContextFiles.length === 0) lines.push("  none");
+		for (const file of report.subdirectoryContextFiles) lines.push(`  ${formatNumber(file.tokens).padStart(6)} tok  ${formatNumber(file.bytes).padStart(7)} B  ${file.path}`);
+	}
 
 	lines.push("");
 	lines.push(theme.fg("accent", expanded ? "Active tools" : "Largest active tools (expand for all)"));
@@ -436,25 +398,16 @@ function renderReport(report: ContextReport, expanded: boolean, theme: { fg: (na
 }
 
 export default function contextExtension(pi: ExtensionAPI) {
-	pi.on("before_agent_start", async (event) => {
+	let lastInjection: InjectionSummary | undefined;
+	pi.on("session_start", () => { lastInjection = undefined; });
+	pi.on("before_agent_start", (event) => {
 		const eventCwd = event.systemPromptOptions.cwd;
-		if (!eventCwd) return;
-
-		const alreadyLoaded = new Set(loadedContextFilesFromOptions(event.systemPromptOptions).map((file) => path.resolve(file.path)));
-		const files = findRelevantSubdirectoryContextFiles(eventCwd, event.prompt, alreadyLoaded);
-		if (files.length === 0) return;
-
-		const { sections, omittedFiles, truncatedChars } = buildSubdirectoryContextSections(files);
-		if (sections.length === 0) return;
-
-		const notes = [];
-		if (omittedFiles > 0) notes.push(`Omitted ${omittedFiles} additional subdirectory context file(s) due to MAX_INJECTED_FILES=${MAX_INJECTED_FILES}.`);
-		if (truncatedChars > 0) notes.push(`Truncated ${truncatedChars} character(s) due to MAX_INJECTED_CHARS=${MAX_INJECTED_CHARS}.`);
-
-		const noteBlock = notes.length > 0 ? `\n\n${notes.map((note) => `[${note}]`).join("\n")}` : "";
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n# Subdirectory AGENTS.md / CLAUDE.md files\n\n${sections.join("\n\n")}${noteBlock}`,
-		};
+		const files = eventCwd && event.messageType === "user"
+			? findRelevantSubdirectoryContextFiles(eventCwd, event.prompt, new Set(loadedContextFilesFromOptions(event.systemPromptOptions).map((file) => path.resolve(file.path))))
+			: [];
+		const { appended, summary } = buildSubdirectoryContext(files);
+		lastInjection = summary;
+		if (appended) return { systemPrompt: event.systemPrompt + appended };
 	});
 
 	pi.registerEntryRenderer(MESSAGE_TYPE, (entry, { expanded }, theme) => {
@@ -462,9 +415,9 @@ export default function contextExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("context", {
-		description: "Show loaded prompt/context files, tool schema sizes, MCP overhead, commands, and context usage",
-		handler: async (_args, ctx) => {
-			const report = buildReport(pi, ctx);
+		description: "Show last-turn injected context and prompt costs; /context inventory also scans for nested context files",
+		handler: async (args, ctx) => {
+			const report = buildReport(pi, ctx, lastInjection, args.trim() === "inventory");
 			pi.appendEntry(MESSAGE_TYPE, report);
 		},
 	});
