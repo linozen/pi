@@ -21,7 +21,8 @@ own provisioning and is not updated by committing this repository.
 ## Components
 
 - `agent/settings.json` — package, model and TUI theme settings.
-- `agent/extensions/context.ts` — `/context` and subdirectory context loading.
+- `agent/extensions/context.ts` — `/context` shows subdirectory instructions added on the last turn; `/context inventory` also scans for available files.
+- `agent/extensions/child-skills.ts` — opt-in skill discovery across immediate child projects.
 - `agent/extensions/subagents/` and `agent/subagents/` — bounded local
   background subagents and read-only profiles. `/subagents view` and its
   `ctrl+shift+j` shortcut require the Pi TUI; the tools work independently of
@@ -31,12 +32,28 @@ own provisioning and is not updated by committing this repository.
   depend on daemon access and configuration.
 - `agent/extensions/ask-user-question/` — structured questions.
 - `agent/extensions/zed-links/` — local Zed file links in the Pi TUI only.
-- `agent/extensions/copy-code/` — Pi TUI clipboard shortcut.
+- `agent/extensions/copy-code/` — Pi TUI clipboard shortcut and `/copy-resume-cmd`.
+  In a saved session, run `/copy-resume-cmd` to copy a shell command that
+  changes to the workspace and resumes that exact session (`n-pi` on this Mac,
+  `pi` elsewhere). Paste it into a shell on the same host.
 - `agent/extensions/statusline.ts` — Pi TUI footer and `/chatgpt-limit`.
 - `agent/extensions/aliases.ts` — quit command aliases.
 - `agent/skills/` and `agent/prompts/` — opt-in skills and prompt templates.
+  Use `/handoff [scope or recipient]` for a reviewable brief in chat and
+  `/verify [scope]` to run the project's documented checks and report gaps.
   The Anki skill requires `dt`.
 - `agent/keybindings.json` and `agent/themes/` — Pi TUI presentation.
+
+## Multi-repo workspaces
+
+Open Pi in the target repo by default. To discover child repo skills from a
+workspace you trust, launch Pi there with `pi --child-skills` (use `--approve`
+only if you intend to grant trust for that run). The flag is scoped to the launch
+directory, respects Pi's trust decision and `--no-skills`, and skips symlinked
+child, config, and skill roots. Inside an accepted root, Pi's normal skill
+loader still applies; enable this only for workspaces whose child skills you
+trust. For a persistent, narrower selection, list explicit paths under `skills`
+in the workspace's `.pi/settings.json` instead.
 
 ## Host-local resources
 
@@ -47,6 +64,15 @@ For nono, install its Pi package on the host and link its extension and skill
 locally; this Mac uses ignored symlinks at `agent/extensions/nono-sandbox.ts`
 and `agent/skills/nono-sandbox`. The nono installer may write a host-specific
 package path to `agent/settings.json`; keep that path out of commits.
+
+## Remote Herdr
+
+The MacBook's Herdr socket is intentionally not exposed to Pi. For an explicitly
+named remote target, use the Herdr CLI over SSH, for example
+`ssh -o BatchMode=yes <host> herdr workspace list`. Pane and agent IDs are
+specific to that host and session. Sending input or changing remote state
+requires approval of the exact target and action. `/handoff` drafts a brief but
+never sends it to a pane or agent.
 
 ## Local MCP configuration
 
@@ -82,11 +108,16 @@ ANSIBLE_CONFIG="$PWD/vm.cfg" ansible-playbook "$HOME/.pi/ansible/rhea-pi-config.
 ## Verification
 
 Before committing, inspect `git status --short --ignored` and ensure runtime
-files and credentials remain untracked. Run the local extension tests:
+files and credentials remain untracked. Run the extension tests and the offline
+RPC startup smoke test (requires `pi` on `PATH`):
 
 ```sh
-node --test agent/extensions/{ask-user-question,subagents,copy-code,zed-links}/core.test.ts
+node --test agent/extensions/*/*.test.ts agent/tests/rpc-smoke.test.ts
 ```
+
+The smoke test uses a temporary home and agent directory, disables MCP, and
+checks tool and prompt registration and child-skill trust in the mode Paseo uses. It does
+not contact model providers.
 
 For changes to native MCP configuration, use `/mcp` or `pi mcp list`. For
 changes to the Mac launchers, validate the Nix source from the infra checkout:

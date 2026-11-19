@@ -20,6 +20,13 @@
 - Agents may use SSH for inspection. On dev, staging, and production hosts, every state-changing command (including Docker, Compose, database, and filesystem mutations) requires explicit operator approval of the exact target and command. Host Docker CLI/socket/Compose mutations still require explicit operator approval. Inside a disposable smolvm guest with its own Docker daemon, guest Docker/Compose and Docker-backed tests need no separate approval; never use the host socket or mount real credentials into the guest.
 - For smolvm under nono, Pi must have been launched with `--open-port`. Use the normal `HOME` so workflows share the host image cache; unset inherited `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and lowercase variants instead of forwarding nono's loopback proxy into the guest. If enabling guest networking, restrict egress with `--allow-host-pattern`.
 
+## Herdr
+
+- Use Herdr only when requested or when the task explicitly targets a Herdr workspace. The MacBook's local Herdr socket is intentionally unavailable to Pi. Do not probe it, expose it, start a local server, or use a local pane as a fallback.
+- For a remote Herdr workspace, run the installed CLI on the explicitly identified SSH host, e.g. `ssh -o BatchMode=yes <host> herdr workspace list`. Use the operator-specified session if needed. Check CLI help on that host when syntax is uncertain; never run bare `herdr` as a probe. If the target or socket is unknown or unavailable, report that rather than guessing or falling back to another session.
+- Discover workspace, pane, and agent IDs on that host and session. Do not reuse local IDs or infer a target from focus. Prefer metadata to pane output; do not collect transcripts, unrelated scrollback, or secrets.
+- Treat remote Herdr mutations like direct SSH mutations: obtain explicit operator approval of the exact host, session/pane/agent when applicable, and command or input before sending input, prompting an agent, running commands, changing layout, or managing a server. Do not use panes to bypass approvals. After a failed or timed-out mutation, inspect state before proposing a retry.
+
 ## nono sandbox
 
 When running inside nono, if file, command, or network access fails with `Operation not permitted`, `Permission denied`, `EACCES`, `EPERM`, `landlock`, or sandbox-denied errors, diagnose with:
