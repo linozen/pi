@@ -1,3 +1,9 @@
+export function resumeCommand(cwd: string, session: string, platform: NodeJS.Platform): string {
+	const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+	const launcher = platform === "darwin" ? "n-pi" : "pi";
+	return `cd ${quote(cwd)} && ${launcher} --session ${quote(session)}`;
+}
+
 export interface CodeBlock {
 	language: string;
 	code: string;

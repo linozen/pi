@@ -1,8 +1,30 @@
+import { existsSync } from "node:fs";
 import { copyToClipboard, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import { codeBlocks } from "./core.ts";
+import { codeBlocks, resumeCommand } from "./core.ts";
 
 export default function copyCode(pi: ExtensionAPI) {
+	pi.registerCommand("copy-resume-cmd", {
+		description: "Copy the shell command to resume this Pi session",
+		handler: async (_args, ctx) => {
+			if (ctx.mode !== "tui") {
+				ctx.ui.notify("Clipboard copying is only available in the Pi TUI", "warning");
+				return;
+			}
+			const session = ctx.sessionManager.getSessionFile();
+			if (!session || !existsSync(session)) {
+				ctx.ui.notify("This session has not been saved yet", "warning");
+				return;
+			}
+			try {
+				await copyToClipboard(resumeCommand(ctx.cwd, session, process.platform));
+				ctx.ui.notify("Resume command copied", "info");
+			} catch (error) {
+				ctx.ui.notify(`Clipboard copy failed: ${error}`, "error");
+			}
+		},
+	});
+
 	pi.registerShortcut(Key.ctrlShift("y"), {
 		description: "Choose a code block from the latest assistant message to copy",
 		handler: async (ctx) => {
