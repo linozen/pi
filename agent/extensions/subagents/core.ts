@@ -70,7 +70,7 @@ export const BUILTIN_AGENTS: Record<string, AgentProfile> = {
 	research: {
 		name: "research",
 		description: "Read-only research subagent for codebase exploration and fact-finding.",
-		tools: "read,grep,find,ls",
+		tools: "read,grep,find,ls,codemode",
 		thinking: "minimal",
 		disableExtensions: true,
 		instructions: "You are a read-only research subagent. Do not modify files. Return concrete findings with file paths and line references where possible.",
@@ -78,7 +78,7 @@ export const BUILTIN_AGENTS: Record<string, AgentProfile> = {
 	review: {
 		name: "review",
 		description: "Read-only review subagent for correctness blockers.",
-		tools: "read,grep,find,ls",
+		tools: "read,grep,find,ls,codemode",
 		thinking: "medium",
 		timeoutSeconds: MAX_REVIEW_TIMEOUT_SECONDS,
 		disableExtensions: true,
@@ -379,6 +379,7 @@ export function buildReportPrompt(profile: AgentProfile): string {
 	return [
 		`Subagent profile: ${profile.name}`,
 		profile.instructions,
+		"When the task needs external evidence, use any available read-only MCP research tools. Discover relevant tools through codemode or tool_search when needed, verify claims against primary sources, and report when no suitable tool is available. Do not use MCP tools that modify state.",
 		"Return only the final report. Do not ask the parent for interactive clarification; state assumptions instead.",
 		"Use this exact report shape when applicable:",
 		"## Result\n## Files inspected\n## Findings\n## Verification\n## Risks / assumptions",
@@ -406,8 +407,13 @@ export function buildRunArgs(profile: AgentProfile, params: SubagentRunParams, t
 	];
 
 	if (trusted) args.push("--approve");
-	if (profile.disableExtensions) args.push("--no-extensions");
 	const tools = profile.tools ?? params.tools;
+	if (profile.disableExtensions) {
+		args.push("--no-extensions");
+		if (tools?.split(",").some((tool) => tool.trim() === "codemode")) {
+			args.push("--extension", "builtin:codemode", "--extension", "builtin:mcp");
+		}
+	}
 	if (tools) args.push("--tools", tools);
 	const model = params.model ?? profile.model ?? defaultModel;
 	if (model) args.push("--model", model);

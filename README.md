@@ -25,14 +25,17 @@ own provisioning and is not updated by committing this repository.
 - `agent/extensions/subagents/` and `agent/subagents/` — bounded local
   background subagents and read-only profiles. `/subagents view` and its
   `ctrl+shift+j` shortcut require the Pi TUI; the tools work independently of
-  that view. Paseo's own agent tools depend on daemon access and configuration.
+  that view. Subagents use available read-only MCP tools when they need external
+  evidence. This is a prompt instruction, not a permission boundary; restrict
+  write-capable MCP tools in server configuration. Paseo's own agent tools
+  depend on daemon access and configuration.
 - `agent/extensions/ask-user-question/` — structured questions.
 - `agent/extensions/zed-links/` — local Zed file links in the Pi TUI only.
 - `agent/extensions/copy-code/` — Pi TUI clipboard shortcut.
 - `agent/extensions/statusline.ts` — Pi TUI footer and `/chatgpt-limit`.
 - `agent/extensions/aliases.ts` — quit command aliases.
 - `agent/skills/` and `agent/prompts/` — opt-in skills and prompt templates.
-  The Anki skill requires `dt`; librarian web research requires web tools.
+  The Anki skill requires `dt`.
 - `agent/keybindings.json` and `agent/themes/` — Pi TUI presentation.
 
 ## Host-local resources

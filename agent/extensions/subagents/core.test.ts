@@ -196,6 +196,20 @@ test("buildRunArgs resolves defaults, caps review windows, and appends the promp
 	assert.ok(explicit.args.includes("--approve"));
 });
 
+test("all subagents get MCP research guidance without loading custom extensions in restricted profiles", () => {
+	const task = { description: "Research", prompt: "Find primary evidence" };
+	const { args } = buildRunArgs({ ...profile, tools: "read,grep,find,ls,codemode", disableExtensions: true }, task, false);
+	assert.ok(args.includes("--no-extensions"));
+	assert.deepEqual(args.flatMap((arg, i) => arg === "--extension" ? [args[i + 1]] : []), ["builtin:codemode", "builtin:mcp"]);
+	assert.equal(args[args.indexOf("--tools") + 1], "read,grep,find,ls,codemode");
+	assert.match(args[args.indexOf("--system-prompt") + 1], /available read-only MCP research tools/);
+
+	const defaults = buildRunArgs({ ...profile, tools: undefined }, task, false).args;
+	assert.ok(!defaults.includes("--tools"));
+	assert.ok(!defaults.includes("--extension"));
+	assert.match(defaults[defaults.indexOf("--system-prompt") + 1], /available read-only MCP research tools/);
+});
+
 test("timeout decision text gives the parent explicit choices", () => {
 	const job = snapshot({ status: "timed_out", extensions: 1 });
 	const text = timeoutDecisionText(job, 300);

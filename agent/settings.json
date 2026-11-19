@@ -2,13 +2,11 @@
   "quietStartup": true,
   "collapseChangelog": true,
   "enableInstallTelemetry": false,
-  "lastChangelogVersion": "1.5.0",
+  "lastChangelogVersion": "1.5.2",
   "autocompleteMaxVisible": 15,
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6-luna",
-  "packages": [
-    "npm:@tavily/pi-extension"
-  ],
+  "packages": [],
   "extensions": [
     "extensions"
   ],
