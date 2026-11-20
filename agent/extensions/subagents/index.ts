@@ -458,11 +458,7 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const showJobsView = async (ctx: ExtensionContext | ExtensionCommandContext): Promise<void> => {
-		if (ctx.mode !== "tui" || !ctx.hasUI) {
-			ctx.ui.notify("The subagent jobs view requires interactive TUI mode. Use /subagents jobs for a plain list.", "warning");
-			return;
-		}
-		await ctx.ui.custom((tui, theme, _keybindings, done) => {
+		const shown = await ctx.ui.custom<boolean>((tui, theme, _keybindings, done) => {
 			let cursor = 0;
 			let detailId: string | null = null;
 			let scroll = 0;
@@ -521,7 +517,7 @@ export default function (pi: ExtensionAPI) {
 							detailId = null;
 							scroll = 0;
 						} else {
-							done(undefined);
+							done(true);
 						}
 						tui.requestRender();
 						return;
@@ -588,6 +584,9 @@ export default function (pi: ExtensionAPI) {
 			};
 			return component;
 		});
+		if (shown === undefined) {
+			ctx.ui.notify("This client cannot open the subagent jobs view. Use /subagents jobs for a plain list.", "warning");
+		}
 	};
 
 	pi.on("before_agent_start", () => {

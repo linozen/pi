@@ -7,8 +7,8 @@ export default function copyCode(pi: ExtensionAPI) {
 	pi.registerCommand("copy-resume-cmd", {
 		description: "Copy the shell command to resume this Pi session",
 		handler: async (_args, ctx) => {
-			if (ctx.mode !== "tui") {
-				ctx.ui.notify("Clipboard copying is only available in the Pi TUI", "warning");
+			if (!ctx.hasUI || !process.stdin.isTTY || !process.stdout.isTTY) {
+				ctx.ui.notify("Clipboard copying requires an interactive terminal", "warning");
 				return;
 			}
 			const session = ctx.sessionManager.getSessionFile();
