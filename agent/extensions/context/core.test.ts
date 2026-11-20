@@ -2,16 +2,20 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildSubdirectoryContext } from "./core.ts";
 
-test("reports the paths and size of what was appended, not the inventory", () => {
+test("builds a hidden, directory-scoped context message and reports what it contains", () => {
 	const path = "project/AGENTS.md";
 	const content = "Only selected instructions ✓";
-	const { appended, summary } = buildSubdirectoryContext([{ path, content }]);
-	assert.ok(appended.includes(content));
+	const { message, summary } = buildSubdirectoryContext([{ path, content }]);
+	assert.ok(message);
+	assert.equal(message.customType, "subdirectory-context");
+	assert.equal(message.display, false);
+	assert.match(message.content, /when working in their corresponding directories/);
+	assert.ok(message.content.includes(`<project_instructions path="${path}">\n${content}`));
 	assert.deepEqual(summary.files.map(file => file.path), [path]);
-	assert.equal(summary.size.bytes, Buffer.byteLength(appended));
-	assert.equal(summary.size.tokens, Math.ceil(appended.length / 4));
+	assert.equal(summary.size.bytes, Buffer.byteLength(message.content));
+	assert.equal(summary.size.tokens, Math.ceil(message.content.length / 4));
 	assert.equal(summary.omittedFiles, 0);
-	assert.equal(buildSubdirectoryContext([]).appended, "");
+	assert.equal(buildSubdirectoryContext([]).message, undefined);
 });
 
 test("accounts for files left out at both injection limits", () => {
@@ -19,11 +23,11 @@ test("accounts for files left out at both injection limits", () => {
 	const limited = buildSubdirectoryContext(files);
 	assert.equal(limited.summary.files.length, 20);
 	assert.equal(limited.summary.omittedFiles, 3);
-	assert.ok(!limited.appended.includes(files[20].path));
+	assert.ok(limited.message && !limited.message.content.includes(files[20].path));
 
 	const huge = { ...files[0], content: "x".repeat(35_000) };
 	const truncated = buildSubdirectoryContext([huge, ...files.slice(1)]);
-	const keptChars = truncated.appended.match(/\nx+/)?.[0].length;
+	const keptChars = truncated.message?.content.match(/\nx+/)?.[0].length;
 	assert.ok(keptChars);
 	assert.equal(truncated.summary.truncatedChars, huge.content.length - (keptChars - 1));
 	assert.equal(truncated.summary.omittedFiles, 22);

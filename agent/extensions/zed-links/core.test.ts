@@ -147,34 +147,31 @@ test("does not alter multiline reference-definition titles", () => {
 	assert.equal(linkifyMarkdown(input, root), expected);
 });
 
-test("extension links only finalized assistant messages using the session cwd", () => {
+test("extension asks Pi to render links only in finalized assistant messages", () => {
 	const handlers = new Map<string, (...args: any[]) => any>();
-	let transformer: ((markdown: string, context: any) => string) | undefined;
+	let transformer: ((markdown: string, context: { isStreaming: boolean }) => string) | undefined;
+	let messageTypes: string[] | undefined;
 	const pi = {
 		on(event: string, handler: (...args: any[]) => any) {
 			handlers.set(event, handler);
 		},
-		registerMarkdownTransformer(registered: typeof transformer) {
+		registerMarkdownTransformer(registered: typeof transformer, options: { messageTypes: string[] }) {
 			transformer = registered;
+			messageTypes = options.messageTypes;
 		},
 	};
 
 	zedLinks(pi as any);
-	handlers.get("session_start")?.({}, { cwd: root, mode: "tui" });
+	handlers.get("session_start")?.({}, { cwd: root });
+	assert.deepEqual(messageTypes, ["assistant"]);
 	assert.ok(transformer);
 
 	const input = "Open `src/main.ts`.";
-	assert.equal(transformer(input, { messageType: "user", isStreaming: false }), input);
-	assert.equal(transformer(input, { messageType: "assistant", isStreaming: true }), input);
-	assert.equal(
-		transformer(input, { messageType: "assistant", isStreaming: false }),
-		`Open [\`src/main.ts\`](zed://file${root}/src/main.ts).`,
-	);
+	assert.equal(transformer(input, { isStreaming: true }), input);
+	assert.equal(transformer(input, { isStreaming: false }), `Open [\`src/main.ts\`](zed://file${root}/src/main.ts).`);
 
-	const prompt = handlers.get("before_agent_start")?.({ systemPrompt: "base" }, { mode: "tui" });
-	assert.match(prompt.systemPrompt, /path by itself in inline code/);
-
-	handlers.get("session_start")?.({}, { cwd: root, mode: "rpc" });
-	assert.equal(transformer(input, { messageType: "assistant", isStreaming: false }), input);
-	assert.equal(handlers.get("before_agent_start")?.({ systemPrompt: "base" }, { mode: "rpc" }), undefined);
+	const prompt = handlers.get("before_agent_start")?.();
+	assert.deepEqual(Object.keys(prompt), ["message"]);
+	assert.equal(prompt.message.display, false);
+	assert.match(prompt.message.content, /path by itself in inline code/);
 });

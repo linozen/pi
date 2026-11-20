@@ -405,9 +405,10 @@ export default function contextExtension(pi: ExtensionAPI) {
 		const files = eventCwd && event.messageType === "user"
 			? findRelevantSubdirectoryContextFiles(eventCwd, event.prompt, new Set(loadedContextFilesFromOptions(event.systemPromptOptions).map((file) => path.resolve(file.path))))
 			: [];
-		const { appended, summary } = buildSubdirectoryContext(files);
+		const { message, summary } = buildSubdirectoryContext(files);
 		lastInjection = summary;
-		if (appended) return { systemPrompt: event.systemPrompt + appended };
+		// Append to the transcript instead of replacing a system prompt that may have signed thinking attached.
+		if (message) return { message };
 	});
 
 	pi.registerEntryRenderer(MESSAGE_TYPE, (entry, { expanded }, theme) => {

@@ -40,7 +40,11 @@ export function buildSubdirectoryContext(files: readonly { path: string; content
 	const notes = [];
 	if (omittedFiles > 0) notes.push(`[Omitted ${omittedFiles} additional subdirectory context file(s) due to injection limits.]`);
 	if (truncatedChars > 0) notes.push(`[Truncated ${truncatedChars} character(s) due to the ${MAX_CHARS}-character limit.]`);
-	const text = ["\n\n# Subdirectory AGENTS.md / CLAUDE.md files", ...sections, ...notes].join("\n\n");
-	const appended = sections.length ? text : "";
-	return { appended, summary: { files: included, size: sizeOf(appended), omittedFiles, truncatedChars } };
+	const content = sections.length ? [
+		"# Subdirectory AGENTS.md / CLAUDE.md files\nFollow these project instructions when working in their corresponding directories.",
+		...sections,
+		...notes,
+	].join("\n\n") : "";
+	const message = content ? { customType: "subdirectory-context", content, display: false } : undefined;
+	return { message, summary: { files: included, size: sizeOf(content), omittedFiles, truncatedChars } };
 }
